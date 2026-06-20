@@ -41,9 +41,9 @@ Krypt04Mcg is a Fabric client mod that transports post-quantum encrypted chat pa
 
 This implementation targets:
 
-- Minecraft Java `26.1.2`
+- Minecraft Java `26.2`
 - Fabric Loader `0.19.2`
-- Fabric API `0.149.0+26.1.2`
+- Fabric API `0.152.2+26.2`
 - Loom `1.16-SNAPSHOT`
 - Java `25`
 
@@ -67,8 +67,8 @@ gradle wrapper
 GitHub Actions builds the mod and publishes release artifacts automatically when a tag matching `v*` is pushed:
 
 ```bash
-git tag v0.8.6
-git push origin v0.8.6
+git tag v0.8.7
+git push origin v0.8.7
 ```
 
 The release workflow can also be triggered manually from the Actions tab. Manual builds are published under generated `snapshot-YYYYMMDD-HHMMSS` tags.
@@ -82,7 +82,7 @@ Release artifacts include:
 To verify a downloaded release JAR:
 
 ```bash
-openssl dgst -verify public_key.pem -signature krypt04mcg-0.8.6.jar.sign krypt04mcg-0.8.6.jar
+openssl dgst -verify public_key.pem -signature krypt04mcg-0.8.7.jar.sign krypt04mcg-0.8.7.jar
 ```
 
 ## License

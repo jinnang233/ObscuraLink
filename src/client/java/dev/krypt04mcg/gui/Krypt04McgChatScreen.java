@@ -367,7 +367,7 @@ public final class Krypt04McgChatScreen extends Screen {
                     .map(name -> findGroupTarget(name).orElse(new Target(name, true, List.of())))
                     .forEach(this::rememberTarget);
         } catch (Exception e) {
-            Minecraft.getInstance().gui.getChat().addClientSystemMessage(Component.literal("[Krypt04Mcg][ERROR] " + e.getMessage()));
+            Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(Component.literal("[Krypt04Mcg][ERROR] " + e.getMessage()));
         }
     }
 

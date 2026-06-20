@@ -117,7 +117,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
         if (chatSendService == null || keyStoreService == null || client.player == null) {
             return;
         }
-        client.setScreen(new Krypt04McgChatScreen(chatSendService, keyStoreService, groupService, conversationStore));
+        client.gui.setScreen(new Krypt04McgChatScreen(chatSendService, keyStoreService, groupService, conversationStore));
     }
 
     private void sendChatLine(String line) {
@@ -135,7 +135,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> {
             if (client.gui != null) {
-                client.gui.getChat().addClientSystemMessage(Component.literal(message));
+                client.gui.hud.getChat().addClientSystemMessage(Component.literal(message));
             }
         });
     }
@@ -144,7 +144,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
         LOGGER.debug(ClientMessages.tr(DISCLAIMER_KEY));
         client.execute(() -> {
             if (client.gui != null) {
-                client.gui.getChat().addClientSystemMessage(Component.empty()
+                client.gui.hud.getChat().addClientSystemMessage(Component.empty()
                         .append(Component.literal("[Krypt04Mcg] ").withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
                         .append(Component.translatable(DISCLAIMER_KEY).withStyle(ChatFormatting.GOLD)));
             }
