@@ -107,6 +107,7 @@
   "text.krypt04mcg.command.no_imported_keys": "Keine importierten öffentlichen Schlüssel.",
   "text.krypt04mcg.command.key_list_entry": "%s kem=%s sig=%s",
   "text.krypt04mcg.command.key_fingerprint": "%s kem=%s sig=%s",
+  "text.krypt04mcg.command.key_exported": "Öffentlichen Schlüssel nach %s exportiert. Fingerabdruck: kem=%s sig=%s",
   "text.krypt04mcg.command.key_imported_tofu": "Öffentlichen Schlüssel für %s mit TOFU-Vertrauen importiert.",
   "text.krypt04mcg.command.key_confirmed": "Fingerabdruck für %s bestätigt.",
   "text.krypt04mcg.command.key_trusted": "%s als TOFU-vertraut markiert.",

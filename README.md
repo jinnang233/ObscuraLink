@@ -67,8 +67,8 @@ gradle wrapper
 GitHub Actions builds the mod and publishes release artifacts automatically when a tag matching `v*` is pushed:
 
 ```bash
-git tag v0.8.7
-git push origin v0.8.7
+git tag v0.9.3
+git push origin v0.9.3
 ```
 
 The release workflow can also be triggered manually from the Actions tab. Manual builds are published under generated `snapshot-YYYYMMDD-HHMMSS` tags.
@@ -108,11 +108,13 @@ config/krypt04mcg/
   keys/
     private/local.json
     public/*.json
+  export/
   sessions/
   cache/
 ```
 
 Private and public key material are stored separately. Public-key records include algorithm, owner, UUID, fingerprint, creation time, and Base64URL key data.
+`/enc key export` writes your shareable public key JSON to `config/krypt04mcg/export/self-public.json`.
 
 ## Commands
 
@@ -144,8 +146,8 @@ Private and public key material are stored separately. Public-key records includ
 Import flow:
 
 1. The other player runs `/enc key export`.
-2. They send you the exported Base64URL blob through a trusted side channel.
-3. You run `/enc key import <player> <blob>`.
+2. They send you the exported JSON file through a trusted side channel and tell you the printed fingerprints.
+3. You run `/enc key import <player> <file-or-json>`.
 4. First import is trusted automatically. If a key changes later, Krypt04Mcg refuses to overwrite it silently.
 
 ## Protocol Format

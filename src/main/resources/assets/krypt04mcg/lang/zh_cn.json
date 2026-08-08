@@ -107,6 +107,7 @@
   "text.krypt04mcg.command.no_imported_keys": "没有已导入的公钥。",
   "text.krypt04mcg.command.key_list_entry": "%s kem=%s sig=%s",
   "text.krypt04mcg.command.key_fingerprint": "%s kem=%s sig=%s",
+  "text.krypt04mcg.command.key_exported": "已将公钥导出到 %s。指纹：kem=%s sig=%s",
   "text.krypt04mcg.command.key_imported_tofu": "已导入 %s 的公钥并设置为 TOFU 信任。",
   "text.krypt04mcg.command.key_confirmed": "已确认 %s 的指纹。",
   "text.krypt04mcg.command.key_trusted": "已将 %s 标记为 TOFU 信任。",

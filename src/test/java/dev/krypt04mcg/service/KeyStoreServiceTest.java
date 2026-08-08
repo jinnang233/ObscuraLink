@@ -26,14 +26,35 @@ final class KeyStoreServiceTest {
 
         Path localKeys = tempDir.resolve("keys").resolve("private").resolve("local.json");
         Path publicKeys = tempDir.resolve("keys").resolve("public").resolve("self-public.json");
+        Path exportedPublicKeys = tempDir.resolve("export").resolve("self-public.json");
         assertTrue(Files.exists(localKeys));
         assertTrue(Files.exists(publicKeys));
+        assertTrue(Files.exists(exportedPublicKeys));
 
         KeyStoreService second = new KeyStoreService(tempDir, cryptoService);
         second.init("alice", "alice-uuid");
 
         assertEquals(first.local().kemPublicKey().fingerprint(), second.local().kemPublicKey().fingerprint());
         assertEquals(first.local().signaturePublicKey().fingerprint(), second.local().signaturePublicKey().fingerprint());
+    }
+
+    @Test
+    void exportsPublicIdentityToExportDirectory() throws Exception {
+        CryptoService cryptoService = new CryptoService();
+        KeyStoreService keyStoreService = new KeyStoreService(tempDir, cryptoService);
+        keyStoreService.init("alice", "alice-uuid");
+
+        KeyStoreService.PublicKeyExport exported = keyStoreService.exportOwnPublicFile();
+
+        assertEquals(tempDir.resolve("export").resolve("self-public.json").toAbsolutePath().normalize(), exported.path());
+        assertTrue(Files.exists(exported.path()));
+        PublicIdentity exportedIdentity = JsonSupport.prettyGson()
+                .fromJson(Files.readString(exported.path()), PublicIdentity.class);
+        assertEquals(keyStoreService.local().kemPublicKey().fingerprint(),
+                exportedIdentity.kemPublicKey().fingerprint());
+        assertEquals(keyStoreService.local().signaturePublicKey().fingerprint(),
+                exportedIdentity.signaturePublicKey().fingerprint());
+        assertEquals(exportedIdentity.kemPublicKey().fingerprint(), exported.identity().kemPublicKey().fingerprint());
     }
 
     @Test

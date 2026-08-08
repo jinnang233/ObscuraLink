@@ -46,7 +46,7 @@ public final class KeyStoreService {
         String stableUuid = uuid == null || uuid.isBlank() ? UUID.randomUUID().toString() : uuid;
         local = cryptoService.generateLocalKeys(owner, stableUuid);
         write(localFile, local);
-        exportOwnPublic();
+        exportOwnPublicFile();
     }
 
     public LocalKeyMaterial local() {
@@ -62,11 +62,15 @@ public final class KeyStoreService {
                 material.kemPublicKey(), material.signaturePublicKey());
     }
 
-    public String exportOwnPublic() throws IOException {
+    public PublicKeyExport exportOwnPublicFile() throws IOException {
         PublicIdentity identity = ownPublicIdentity();
         String json = gson.toJson(identity);
         Files.writeString(keysDir.resolve("public").resolve("self-public.json"), json, StandardCharsets.UTF_8);
-        return Base64Url.encode(json.getBytes(StandardCharsets.UTF_8));
+        Path exportDir = root.resolve("export");
+        Files.createDirectories(exportDir);
+        Path exportFile = exportDir.resolve("self-public.json");
+        Files.writeString(exportFile, json, StandardCharsets.UTF_8);
+        return new PublicKeyExport(exportFile.toAbsolutePath().normalize(), identity);
     }
 
     public PublicIdentity importPublicIdentity(String player, String dataOrFile) throws IOException {
@@ -210,5 +214,8 @@ public final class KeyStoreService {
 
     private static String normalize(String player) {
         return player.toLowerCase().replaceAll("[^a-z0-9_.-]", "_");
+    }
+
+    public record PublicKeyExport(Path path, PublicIdentity identity) {
     }
 }

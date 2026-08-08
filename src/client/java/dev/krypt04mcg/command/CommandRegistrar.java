@@ -298,7 +298,11 @@ public final class CommandRegistrar {
                 .then(ClientCommands.literal("export")
                         .executes(ctx -> {
                             try {
-                                feedback(ctx.getSource(), keyStoreService.exportOwnPublic());
+                                KeyStoreService.PublicKeyExport exported = keyStoreService.exportOwnPublicFile();
+                                PublicIdentity identity = exported.identity();
+                                feedback(ctx.getSource(), tr("text.krypt04mcg.command.key_exported",
+                                        exported.path(), identity.kemPublicKey().fingerprint(),
+                                        identity.signaturePublicKey().fingerprint()));
                                 return 1;
                             } catch (Exception e) {
                                 error(ctx.getSource(), e);

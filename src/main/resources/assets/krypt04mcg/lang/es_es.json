@@ -107,6 +107,7 @@
   "text.krypt04mcg.command.no_imported_keys": "No hay claves públicas importadas.",
   "text.krypt04mcg.command.key_list_entry": "%s kem=%s sig=%s",
   "text.krypt04mcg.command.key_fingerprint": "%s kem=%s sig=%s",
+  "text.krypt04mcg.command.key_exported": "Clave pública exportada a %s. Huella: kem=%s sig=%s",
   "text.krypt04mcg.command.key_imported_tofu": "Clave pública de %s importada con confianza TOFU.",
   "text.krypt04mcg.command.key_confirmed": "Huella de %s confirmada.",
   "text.krypt04mcg.command.key_trusted": "%s marcado con confianza TOFU.",

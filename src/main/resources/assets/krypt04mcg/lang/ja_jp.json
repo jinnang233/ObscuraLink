@@ -107,6 +107,7 @@
   "text.krypt04mcg.command.no_imported_keys": "インポート済み公開鍵はありません。",
   "text.krypt04mcg.command.key_list_entry": "%s kem=%s sig=%s",
   "text.krypt04mcg.command.key_fingerprint": "%s kem=%s sig=%s",
+  "text.krypt04mcg.command.key_exported": "公開鍵を %s にエクスポートしました。フィンガープリント: kem=%s sig=%s",
   "text.krypt04mcg.command.key_imported_tofu": "%s の公開鍵をインポートし、TOFU 信頼に設定しました。",
   "text.krypt04mcg.command.key_confirmed": "%s の指紋を確認しました。",
   "text.krypt04mcg.command.key_trusted": "%s を TOFU 信頼に設定しました。",

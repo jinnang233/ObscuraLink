@@ -107,6 +107,7 @@
   "text.krypt04mcg.command.no_imported_keys": "가져온 공개키가 없습니다.",
   "text.krypt04mcg.command.key_list_entry": "%s kem=%s sig=%s",
   "text.krypt04mcg.command.key_fingerprint": "%s kem=%s sig=%s",
+  "text.krypt04mcg.command.key_exported": "공개키를 %s(으)로 내보냈습니다. 지문: kem=%s sig=%s",
   "text.krypt04mcg.command.key_imported_tofu": "%s의 공개키를 가져오고 TOFU 신뢰로 설정했습니다.",
   "text.krypt04mcg.command.key_confirmed": "%s의 지문을 확인했습니다.",
   "text.krypt04mcg.command.key_trusted": "%s를 TOFU 신뢰로 표시했습니다.",

@@ -33,6 +33,10 @@ public final class Krypt04McgChatScreen extends Screen {
     private static final int OUTGOING_COLOR = 0xFF8DDBA4;
     private static final int INCOMING_COLOR = 0xFFE6EEF7;
     private static final int BUTTON_GAP = 6;
+    private static final int BUTTON_ROW_GAP = 4;
+    private static final int BUTTON_HEIGHT = 20;
+    private static final int BUTTON_MIN_WIDTH = 62;
+    private static final int MESSAGE_BOTTOM_GAP = 6;
 
     private final ChatSendService chatSendService;
     private final KeyStoreService keyStoreService;
@@ -83,9 +87,9 @@ public final class Krypt04McgChatScreen extends Screen {
         }
         addRenderableWidget(playerBox);
 
-        int buttonWidth = Math.max(62, (rightWidth - BUTTON_GAP * 3) / 4);
-        int buttonY = panelY + panelHeight - 28;
-        messageBox = new EditBox(font, rightX, panelY + panelHeight - 54, rightWidth, 20,
+        ButtonLayout buttonLayout = buttonLayout(rightX, rightWidth);
+        int messageY = buttonLayout.y() - BUTTON_HEIGHT - MESSAGE_BOTTOM_GAP;
+        messageBox = new EditBox(font, rightX, messageY, rightWidth, 20,
                 Component.translatable("text.krypt04mcg.gui.message"));
         messageBox.setMaxLength(512);
         messageBox.setHint(Component.translatable("text.krypt04mcg.gui.message_hint"));
@@ -93,16 +97,16 @@ public final class Krypt04McgChatScreen extends Screen {
         setInitialFocus(messageBox);
 
         addRenderableWidget(Button.builder(Component.translatable("text.krypt04mcg.gui.exchange"), button -> exchange())
-                .bounds(rightX, buttonY, buttonWidth, 20)
+                .bounds(buttonLayout.x(0), buttonLayout.y(0), buttonLayout.buttonWidth(), BUTTON_HEIGHT)
                 .build());
         addRenderableWidget(Button.builder(Component.translatable("text.krypt04mcg.gui.send_unsigned"), button -> sendUnsigned())
-                .bounds(rightX + buttonWidth + BUTTON_GAP, buttonY, buttonWidth, 20)
+                .bounds(buttonLayout.x(1), buttonLayout.y(1), buttonLayout.buttonWidth(), BUTTON_HEIGHT)
                 .build());
         addRenderableWidget(Button.builder(Component.translatable("text.krypt04mcg.gui.session"), button -> sendSession())
-                .bounds(rightX + (buttonWidth + BUTTON_GAP) * 2, buttonY, buttonWidth, 20)
+                .bounds(buttonLayout.x(2), buttonLayout.y(2), buttonLayout.buttonWidth(), BUTTON_HEIGHT)
                 .build());
         addRenderableWidget(Button.builder(Component.translatable("text.krypt04mcg.gui.send"), button -> sendSigned())
-                .bounds(rightX + rightWidth - buttonWidth, buttonY, buttonWidth, 20)
+                .bounds(buttonLayout.x(3), buttonLayout.y(3), buttonLayout.buttonWidth(), BUTTON_HEIGHT)
                 .build());
     }
 
@@ -117,7 +121,8 @@ public final class Krypt04McgChatScreen extends Screen {
         int rightX = panelX + listWidth + 14;
         int rightWidth = panelWidth - listWidth - 28;
         int historyTop = panelY + 78;
-        int historyBottom = panelY + panelHeight - 62;
+        int historyBottom = Math.max(historyTop + 1,
+                buttonLayout(rightX, rightWidth).y() - BUTTON_HEIGHT - MESSAGE_BOTTOM_GAP - 8);
         graphics.fill(rightX, historyTop, rightX + rightWidth, historyBottom, 0x6A071016);
 
         graphics.nextStratum();
@@ -175,6 +180,21 @@ public final class Krypt04McgChatScreen extends Screen {
 
     private int visibleTargetRows() {
         return Math.max(0, (panelHeight - 64) / 20);
+    }
+
+    private ButtonLayout buttonLayout(int rightX, int rightWidth) {
+        int columns;
+        if (rightWidth >= BUTTON_MIN_WIDTH * 4 + BUTTON_GAP * 3) {
+            columns = 4;
+        } else if (rightWidth >= BUTTON_MIN_WIDTH * 2 + BUTTON_GAP) {
+            columns = 2;
+        } else {
+            columns = 1;
+        }
+        int rows = Math.ceilDiv(4, columns);
+        int buttonWidth = Math.max(1, (rightWidth - BUTTON_GAP * (columns - 1)) / columns);
+        int buttonY = panelY + panelHeight - 8 - rows * BUTTON_HEIGHT - (rows - 1) * BUTTON_ROW_GAP;
+        return new ButtonLayout(rightX, buttonY, buttonWidth, columns);
     }
 
     private void selectTarget(int index) {
@@ -379,6 +399,18 @@ public final class Krypt04McgChatScreen extends Screen {
                     .map(group -> new Target(group.name(), true, group.members()));
         } catch (Exception e) {
             return Optional.empty();
+        }
+    }
+
+    private record ButtonLayout(int left, int y, int buttonWidth, int columns) {
+        private int x(int index) {
+            int column = index % columns;
+            return left + column * (buttonWidth + BUTTON_GAP);
+        }
+
+        private int y(int index) {
+            int row = index / columns;
+            return y + row * (BUTTON_HEIGHT + BUTTON_ROW_GAP);
         }
     }
 
