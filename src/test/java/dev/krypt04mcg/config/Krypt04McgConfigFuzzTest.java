@@ -37,9 +37,12 @@ final class Krypt04McgConfigFuzzTest {
             assertEquals(config.maxMessagesPerSession, decoded.maxMessagesPerSession);
             assertEquals(config.rotateAfterBytes, decoded.rotateAfterBytes);
             assertEquals(config.packetPrefix, decoded.packetPrefix);
+            assertEquals(config.chatSendMode, decoded.chatSendMode);
+            assertEquals(config.serverCommandTemplate, decoded.serverCommandTemplate);
             assertEquals(config.receiveRegexMode, decoded.receiveRegexMode);
             assertEquals(config.receiveRegex, decoded.receiveRegex);
             assertEquals(config.shadowListenMode, decoded.shadowListenMode);
+            assertEquals(config.shadowListenRegexes, decoded.shadowListenRegexes);
             assertEquals(config.shadowListenRegex, decoded.shadowListenRegex);
             assertEquals(config.kemAlgorithm, decoded.kemAlgorithm);
             assertEquals(config.signatureAlgorithm, decoded.signatureAlgorithm);
@@ -55,7 +58,9 @@ final class Krypt04McgConfigFuzzTest {
             Krypt04McgConfig config = randomConfig(random);
 
             compileOrReject(config.receiveRegex);
-            compileOrReject(config.shadowListenRegex);
+            for (String shadowListenRegex : config.shadowListenRegexes) {
+                compileOrReject(shadowListenRegex);
+            }
         }
     }
 
@@ -86,9 +91,12 @@ final class Krypt04McgConfigFuzzTest {
         config.maxMessagesPerSession = 1 + random.nextInt(20_000);
         config.rotateAfterBytes = Math.abs(random.nextLong());
         config.packetPrefix = random.nextBoolean() ? "" : randomToken(random);
+        config.chatSendMode = ChatSendMode.values()[random.nextInt(ChatSendMode.values().length)];
+        config.serverCommandTemplate = random.nextBoolean() ? "/msg <receiver> <fragment>" : randomToken(random);
         config.receiveRegexMode = random.nextBoolean();
         config.receiveRegex = randomRegex(random);
         config.shadowListenMode = random.nextBoolean();
+        config.shadowListenRegexes = new java.util.ArrayList<>(java.util.List.of(randomRegex(random), randomRegex(random)));
         config.shadowListenRegex = randomRegex(random);
         config.kemAlgorithm = randomToken(random);
         config.signatureAlgorithm = randomToken(random);

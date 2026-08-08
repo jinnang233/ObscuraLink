@@ -27,10 +27,15 @@ public final class ClothKrypt04McgConfig implements ConfigData {
 
     public long rotateAfterBytes = 1024L * 1024L;
 
+    public ChatSendMode chatSendMode = ChatSendMode.CHAT;
+    public String serverCommandTemplate = "/msg <receiver> <fragment>";
     public String packetPrefix = "[KRYPT04MCG]";
     public boolean receiveRegexMode = false;
     public String receiveRegex = "^\\[KRYPT04MCG\\] .+";
     public boolean shadowListenMode = false;
+    public java.util.List<String> shadowListenRegexes = new java.util.ArrayList<>(
+            java.util.List.of("^<(?<player>[^>]+)>\\s*(?<message>.*)$"));
+    @ConfigEntry.Gui.Excluded
     public String shadowListenRegex = "^<(?<player>[^>]+)>\\s*(?<message>.*)$";
     public String kemAlgorithm = "CMCE/mceliece348864";
     public String signatureAlgorithm = "Falcon-512";
@@ -54,10 +59,14 @@ public final class ClothKrypt04McgConfig implements ConfigData {
         config.sessionTtlMinutes = sessionTtlMinutes;
         config.maxMessagesPerSession = maxMessagesPerSession;
         config.rotateAfterBytes = rotateAfterBytes;
+        config.chatSendMode = chatSendMode;
+        config.serverCommandTemplate = serverCommandTemplate;
         config.packetPrefix = packetPrefix;
         config.receiveRegexMode = receiveRegexMode;
         config.receiveRegex = receiveRegex;
         config.shadowListenMode = shadowListenMode;
+        config.shadowListenRegexes = new java.util.ArrayList<>(
+                shadowListenRegexes == null ? java.util.List.of(shadowListenRegex) : shadowListenRegexes);
         config.shadowListenRegex = shadowListenRegex;
         config.kemAlgorithm = kemAlgorithm;
         config.signatureAlgorithm = signatureAlgorithm;

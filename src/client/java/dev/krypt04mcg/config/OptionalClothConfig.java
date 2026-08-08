@@ -3,6 +3,8 @@ package dev.krypt04mcg.config;
 import dev.krypt04mcg.Krypt04McgMod;
 import net.fabricmc.loader.api.FabricLoader;
 
+import java.util.function.Consumer;
+
 public final class OptionalClothConfig {
     private static final String CLOTH_CONFIG_MOD_ID = "cloth-config";
 
@@ -20,5 +22,16 @@ public final class OptionalClothConfig {
             Krypt04McgMod.LOGGER.warn("Unable to load Krypt04Mcg settings from Cloth Config; using defaults", e);
         }
         return new Krypt04McgConfig();
+    }
+
+    public static void registerSaveListener(Consumer<Krypt04McgConfig> listener) {
+        if (!FabricLoader.getInstance().isModLoaded(CLOTH_CONFIG_MOD_ID)) {
+            return;
+        }
+        try {
+            ClothConfigBridge.registerSaveListener(listener);
+        } catch (LinkageError e) {
+            Krypt04McgMod.LOGGER.warn("Unable to register Krypt04Mcg Cloth Config save listener", e);
+        }
     }
 }

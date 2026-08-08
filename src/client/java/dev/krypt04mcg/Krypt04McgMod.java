@@ -5,6 +5,7 @@ import dev.krypt04mcg.chat.ChatConversationStore;
 import dev.krypt04mcg.chat.ChatSendService;
 import dev.krypt04mcg.client.ClientMessages;
 import dev.krypt04mcg.command.CommandRegistrar;
+import dev.krypt04mcg.config.ChatSendMode;
 import dev.krypt04mcg.config.Krypt04McgConfig;
 import dev.krypt04mcg.config.OptionalClothConfig;
 import dev.krypt04mcg.crypto.CryptoService;
@@ -31,6 +32,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -89,6 +91,8 @@ public final class Krypt04McgMod implements ClientModInitializer {
 
         chatSendService = new ChatSendService(config, keyStoreService, keyTrustService, sessionService, sentMessageCacheService, cryptoService, packetCodec,
                 fragmentService, this::sendChatLine, this::system);
+        applyChatSender();
+        OptionalClothConfig.registerSaveListener(updated -> applyChatSender());
         chatReceiveHandler = new ChatReceiveHandler(config, keyStoreService, cryptoService, packetCodec, fragmentService,
                 reassembler, decryptionHistoryService, sessionService, this::system, conversationStore::incoming);
 
@@ -134,6 +138,36 @@ public final class Krypt04McgMod implements ClientModInitializer {
         }
     }
 
+    private void sendServerCommand(ChatSendFragment chatSendFragment) {
+        Minecraft client = Minecraft.getInstance();
+        String fragment = chatSendFragment.fragment();
+        if (!fragmentService.isFragment(fragment, config.packetPrefix)) {
+            LOGGER.warn("Refusing to send non-Krypt04Mcg command fragment");
+            return;
+        }
+        if (client.getConnection() != null) {
+            client.getConnection().sendCommand(formatServerCommand(config.serverCommandTemplate, chatSendFragment));
+        }
+    }
+
+    private void applyChatSender() {
+        if (chatSendService == null) {
+            return;
+        }
+        if (config.chatSendMode == ChatSendMode.SERVER_COMMAND) {
+            chatSendService.setChatSender(this::sendServerCommand);
+        } else {
+            chatSendService.setChatSender(this::sendChatLine);
+        }
+    }
+
+    static String formatServerCommand(String template, ChatSendFragment fragment) {
+        String command = template == null || template.isBlank() ? "/msg <receiver> <fragment>" : template;
+        command = command.replace("<receiver>", fragment.receiver())
+                .replace("<fragment>", fragment.fragment());
+        return command.startsWith("/") ? command.substring(1) : command;
+    }
+
     private void system(String message) {
         Minecraft client = Minecraft.getInstance();
         client.execute(() -> {
@@ -158,21 +192,30 @@ public final class Krypt04McgMod implements ClientModInitializer {
         if (!config.shadowListenMode || raw == null || raw.isBlank()) {
             return Optional.empty();
         }
-        try {
-            Matcher matcher = Pattern.compile(config.shadowListenRegex).matcher(raw);
-            if (!matcher.matches()) {
-                return Optional.empty();
+        for (String regex : shadowListenRegexes()) {
+            try {
+                Matcher matcher = Pattern.compile(regex).matcher(raw);
+                if (!matcher.matches()) {
+                    continue;
+                }
+                String player = matcher.group("player");
+                String message = matcher.group("message");
+                if (player == null || message == null) {
+                    continue;
+                }
+                return Optional.of(new ShadowMessage(player, message));
+            } catch (IllegalArgumentException e) {
+                LOGGER.warn("Invalid Krypt04Mcg shadow listen regex: {}", regex, e);
             }
-            String player = matcher.group("player");
-            String message = matcher.group("message");
-            if (player == null || message == null) {
-                return Optional.empty();
-            }
-            return Optional.of(new ShadowMessage(player, message));
-        } catch (IllegalArgumentException e) {
-            LOGGER.warn("Invalid Krypt04Mcg shadow listen regex: {}", config.shadowListenRegex, e);
-            return Optional.empty();
         }
+        return Optional.empty();
+    }
+
+    private List<String> shadowListenRegexes() {
+        if (config.shadowListenRegexes != null && !config.shadowListenRegexes.isEmpty()) {
+            return config.shadowListenRegexes;
+        }
+        return List.of(config.shadowListenRegex);
     }
 
     private static boolean isLocalSender(String senderName, String localName) {

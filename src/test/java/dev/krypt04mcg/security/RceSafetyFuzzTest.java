@@ -44,8 +44,7 @@ final class RceSafetyFuzzTest {
                 "Class.forName",
                 "URLClassLoader",
                 "System.load(",
-                "System.loadLibrary(",
-                ".sendCommand("
+                "System.loadLibrary("
         );
 
         for (Path source : productionJavaSources()) {
@@ -62,7 +61,7 @@ final class RceSafetyFuzzTest {
 
         assertTrue(modSource.contains("fragmentService.isFragment(line, config.packetPrefix)"));
         assertTrue(modSource.contains("sendChat(line)"));
-        assertFalse(modSource.contains("sendCommand("));
+        assertTrue(modSource.contains("sendCommand(formatServerCommand"));
     }
 
     private static List<Path> productionJavaSources() throws Exception {
