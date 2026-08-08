@@ -27,9 +27,9 @@ Krypt04Mcg is a Fabric client mod that transports post-quantum encrypted chat pa
 ## Features
 
 - Client-side `/enc` command tree.
-- Classic McEliece/CMCE KEM key pairs generated automatically.
-- Falcon signing key pairs generated automatically.
-- AES-256-GCM with random 96-bit nonce per message.
+- Configurable CMCE and ML-KEM key parameter sets.
+- Configurable Falcon and ML-DSA signature parameter sets.
+- AES-256-GCM or ChaCha20-Poly1305 with a random 96-bit nonce per message.
 - HKDF-SHA256 derives AEAD keys from KEM shared secrets.
 - Optional signature verification for signed packets.
 - Public-key import/export with Trust On First Use checks.
@@ -67,8 +67,8 @@ gradle wrapper
 GitHub Actions builds the mod and publishes release artifacts automatically when a tag matching `v*` is pushed:
 
 ```bash
-git tag v0.9.3
-git push origin v0.9.3
+git tag v0.10.0
+git push origin v0.10.0
 ```
 
 The release workflow can also be triggered manually from the Actions tab. Manual builds are published under generated `snapshot-YYYYMMDD-HHMMSS` tags.
@@ -116,6 +116,10 @@ config/krypt04mcg/
 Private and public key material are stored separately. Public-key records include algorithm, owner, UUID, fingerprint, creation time, and Base64URL key data.
 `/enc key export` writes your shareable public key JSON to `config/krypt04mcg/export/self-public.json`.
 
+The KEM and signature selections only apply when no local key exists or when a key is explicitly regenerated. Changing the configuration never rewrites an existing key. Encryption, signing, verification, and decryption resolve algorithms from key records and packet algorithm identifiers rather than assuming the current configuration.
+
+Supported key selections are all ten Bouncy Castle CMCE parameter sets, ML-KEM-512/768/1024, Falcon-512/1024, and ML-DSA-44/65/87. The defaults remain `CMCE/mceliece348864`, `Falcon-512`, and `AES-256-GCM`.
+
 ## Commands
 
 ```text
@@ -137,6 +141,8 @@ Private and public key material are stored separately. Public-key records includ
 /enc key fingerprint <player>
 /enc key export
 /enc key import <player> <data-or-file>
+/enc key regenerate
+/enc key regenerate <current-kem-fingerprint>
 /enc key verify <player> <fingerprint>
 /enc key confirm <player>
 /enc key trust <player>
@@ -149,6 +155,13 @@ Import flow:
 2. They send you the exported JSON file through a trusted side channel and tell you the printed fingerprints.
 3. You run `/enc key import <player> <file-or-json>`.
 4. First import is trusted automatically. If a key changes later, Krypt04Mcg refuses to overwrite it silently.
+
+Regeneration flow:
+
+1. Select the replacement KEM and signature parameter sets in the mod configuration.
+2. Run `/enc key regenerate`; the mod prints the current KEM fingerprint and the exact confirmation command.
+3. Run `/enc key regenerate <current-kem-fingerprint>` to replace both local key pairs.
+4. Export and redistribute the new public key. Existing peers will reject it as a TOFU key change until they deliberately replace the old key.
 
 ## Protocol Format
 
@@ -184,6 +197,8 @@ i32  signatureLength
 bytes signature
 ```
 
+Protocol v2 retains this layout. It adds the HKDF identifier to authenticated AAD. The decoder still accepts v1 packets and reproduces their original AAD rules, so existing stored keys and in-flight v1 messages remain compatible.
+
 Packet types:
 
 - `1`: KEM encrypted message.
@@ -194,11 +209,12 @@ Packet types:
 ## Security Design
 
 - AES/ECB is not used.
-- AES-GCM is used with a fresh random nonce per encrypted message.
+- The packet-selected supported AEAD is used with a fresh random nonce per encrypted message.
 - `SecureRandom` generates message IDs, nonces, KEM randomness, and session material.
-- KEM shared secrets are never used directly as AES keys.
+- KEM shared secrets are never used directly as AEAD keys.
 - HKDF-SHA256 derives AEAD keys with the message ID as salt.
-- AEAD AAD covers protocol version, packet type, flags, sender, receiver, message ID, packet-level fragment fields, and algorithm identifiers.
+- AEAD AAD covers protocol version, packet type, flags, sender, receiver, message ID, packet-level fragment fields, and algorithm identifiers (including HKDF in v2).
+- Incoming packets select their supported algorithms from the authenticated protocol identifiers; the KEM and signature identifiers must match the corresponding stored key records.
 - Signatures cover AAD plus timestamp, nonce, KEM encapsulation, and ciphertext.
 - Decryption rejects wrong receivers before attempting plaintext display.
 - Decryption failures do not display garbage plaintext.

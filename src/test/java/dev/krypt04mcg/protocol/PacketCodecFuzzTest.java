@@ -64,7 +64,8 @@ final class PacketCodecFuzzTest {
 
     private static EncryptedPacket randomPacket(Random random) {
         PacketType[] types = PacketType.values();
-        return new EncryptedPacket((byte) random.nextInt(256), types[random.nextInt(types.length)],
+        byte version = random.nextBoolean() ? EncryptedPacket.LEGACY_VERSION : EncryptedPacket.VERSION;
+        return new EncryptedPacket(version, types[random.nextInt(types.length)],
                 (byte) random.nextInt(256), randomName(random), randomName(random), random.nextLong(),
                 randomBytes(random, 16), (short) random.nextInt(Short.MAX_VALUE + 1),
                 (short) (1 + random.nextInt(Short.MAX_VALUE)), randomAlgorithms(random),

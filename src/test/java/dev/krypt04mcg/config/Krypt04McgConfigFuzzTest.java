@@ -102,9 +102,9 @@ final class Krypt04McgConfigFuzzTest {
         config.shadowListenMode = random.nextBoolean();
         config.shadowListenRegexes = new java.util.ArrayList<>(java.util.List.of(randomRegex(random), randomRegex(random)));
         config.shadowListenRegex = randomRegex(random);
-        config.kemAlgorithm = randomToken(random);
-        config.signatureAlgorithm = randomToken(random);
-        config.aeadAlgorithm = randomToken(random);
+        config.kemAlgorithm = KemAlgorithm.values()[random.nextInt(KemAlgorithm.values().length)];
+        config.signatureAlgorithm = SignatureAlgorithm.values()[random.nextInt(SignatureAlgorithm.values().length)];
+        config.aeadAlgorithm = AeadAlgorithm.values()[random.nextInt(AeadAlgorithm.values().length)];
         return config;
     }
 

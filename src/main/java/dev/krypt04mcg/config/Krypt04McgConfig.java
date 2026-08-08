@@ -29,7 +29,7 @@ public class Krypt04McgConfig {
     public java.util.List<String> shadowListenRegexes = new java.util.ArrayList<>(
             java.util.List.of("^<(?<player>[^>]+)>\\s*(?<message>.*)$"));
     public String shadowListenRegex = "^<(?<player>[^>]+)>\\s*(?<message>.*)$";
-    public String kemAlgorithm = "CMCE/mceliece348864";
-    public String signatureAlgorithm = "Falcon-512";
-    public String aeadAlgorithm = "AES-256-GCM";
+    public KemAlgorithm kemAlgorithm = KemAlgorithm.CMCE_MCELIECE348864;
+    public SignatureAlgorithm signatureAlgorithm = SignatureAlgorithm.FALCON_512;
+    public AeadAlgorithm aeadAlgorithm = AeadAlgorithm.AES_256_GCM;
 }

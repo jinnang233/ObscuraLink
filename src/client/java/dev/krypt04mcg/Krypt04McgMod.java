@@ -86,7 +86,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
         String owner = client.getUser().getName();
         String uuid = client.getUser().getProfileId() == null ? "" : client.getUser().getProfileId().toString();
         try {
-            keyStoreService.init(owner, uuid);
+            keyStoreService.init(owner, uuid, config.kemAlgorithm, config.signatureAlgorithm);
         } catch (Exception e) {
             LOGGER.error("Unable to initialize Krypt04Mcg keys", e);
             system(ClientMessages.tr("text.krypt04mcg.error.key_init_failed"));

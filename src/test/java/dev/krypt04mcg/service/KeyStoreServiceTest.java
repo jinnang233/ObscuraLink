@@ -1,5 +1,8 @@
 package dev.krypt04mcg.service;
 
+import dev.krypt04mcg.config.KemAlgorithm;
+import dev.krypt04mcg.config.SignatureAlgorithm;
+import dev.krypt04mcg.crypto.CryptoException;
 import dev.krypt04mcg.crypto.CryptoService;
 import dev.krypt04mcg.model.LocalKeyMaterial;
 import dev.krypt04mcg.model.PublicIdentity;
@@ -11,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +40,35 @@ final class KeyStoreServiceTest {
 
         assertEquals(first.local().kemPublicKey().fingerprint(), second.local().kemPublicKey().fingerprint());
         assertEquals(first.local().signaturePublicKey().fingerprint(), second.local().signaturePublicKey().fingerprint());
+    }
+
+    @Test
+    void configChangesDoNotReplaceExistingKeysUntilFingerprintConfirmedRegeneration() throws Exception {
+        CryptoService cryptoService = new CryptoService();
+        KeyStoreService first = new KeyStoreService(tempDir, cryptoService);
+        first.init("alice", "alice-uuid");
+        String originalFingerprint = first.regenerationFingerprint();
+
+        KeyStoreService reloaded = new KeyStoreService(tempDir, cryptoService);
+        reloaded.init("alice", "alice-uuid", KemAlgorithm.ML_KEM_512, SignatureAlgorithm.ML_DSA_44);
+
+        assertEquals(originalFingerprint, reloaded.regenerationFingerprint());
+        assertEquals("CMCE/mceliece348864/public", reloaded.local().kemPublicKey().algorithm());
+        assertEquals("Falcon-512/public", reloaded.local().signaturePublicKey().algorithm());
+        assertThrows(CryptoException.class, () -> reloaded.regenerate("wrong-fingerprint",
+                KemAlgorithm.ML_KEM_512, SignatureAlgorithm.ML_DSA_44));
+
+        LocalKeyMaterial regenerated = reloaded.regenerate(originalFingerprint,
+                KemAlgorithm.ML_KEM_512, SignatureAlgorithm.ML_DSA_44);
+
+        assertNotEquals(originalFingerprint, regenerated.kemPublicKey().fingerprint());
+        assertEquals("ML-KEM-512/public", regenerated.kemPublicKey().algorithm());
+        assertEquals("ML-DSA-44/public", regenerated.signaturePublicKey().algorithm());
+
+        KeyStoreService afterRestart = new KeyStoreService(tempDir, cryptoService);
+        afterRestart.init("alice", "alice-uuid");
+        assertEquals(regenerated.kemPublicKey().fingerprint(), afterRestart.local().kemPublicKey().fingerprint());
+        assertEquals("ML-KEM-512/public", afterRestart.local().kemPublicKey().algorithm());
     }
 
     @Test

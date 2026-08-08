@@ -8,6 +8,7 @@ import com.mojang.brigadier.context.StringRange;
 import dev.krypt04mcg.chat.ChatSendService;
 import dev.krypt04mcg.config.Krypt04McgConfig;
 import dev.krypt04mcg.model.GroupRecord;
+import dev.krypt04mcg.model.LocalKeyMaterial;
 import dev.krypt04mcg.model.PublicIdentity;
 import dev.krypt04mcg.model.SessionRecord;
 import dev.krypt04mcg.model.TrustState;
@@ -65,9 +66,9 @@ public final class CommandRegistrar {
                     .then(groupCommand(groupService))
                     .then(resendCommand(chatSendService))
                     .then(sessionCommand(chatSendService, sessionService, config))
-                    .then(showAlgorithmsCommand(config))
+                    .then(showAlgorithmsCommand(config, keyStoreService))
                     .then(statusCommand(keyStoreService, keyTrustService, sessionService, decryptionHistoryService, config))
-                    .then(keyCommand(keyStoreService, keyTrustService));
+                    .then(keyCommand(keyStoreService, keyTrustService, config));
     }
 
     private static LiteralArgumentBuilder<FabricClientCommandSource> tellCommand(ChatSendService chatSendService, boolean signed) {
@@ -234,11 +235,16 @@ public final class CommandRegistrar {
                                 })));
     }
 
-    private static LiteralArgumentBuilder<FabricClientCommandSource> showAlgorithmsCommand(Krypt04McgConfig config) {
+    private static LiteralArgumentBuilder<FabricClientCommandSource> showAlgorithmsCommand(Krypt04McgConfig config,
+                                                                                           KeyStoreService keyStoreService) {
         return ClientCommands.literal("showalgs")
                 .executes(ctx -> {
                     feedback(ctx.getSource(), tr("text.krypt04mcg.command.algorithms",
-                            config.kemAlgorithm, config.signatureAlgorithm, config.aeadAlgorithm));
+                            config.kemAlgorithm.identifier(), config.signatureAlgorithm.identifier(),
+                            config.aeadAlgorithm.identifier()));
+                    LocalKeyMaterial local = keyStoreService.local();
+                    feedback(ctx.getSource(), tr("text.krypt04mcg.command.active_key_algorithms",
+                            local.kemPublicKey().algorithm(), local.signaturePublicKey().algorithm()));
                     return 1;
                 });
     }
@@ -258,7 +264,8 @@ public final class CommandRegistrar {
     }
 
     private static LiteralArgumentBuilder<FabricClientCommandSource> keyCommand(KeyStoreService keyStoreService,
-                                                                               KeyTrustService keyTrustService) {
+                                                                               KeyTrustService keyTrustService,
+                                                                               Krypt04McgConfig config) {
         return ClientCommands.literal("key")
                 .then(ClientCommands.literal("list")
                         .executes(ctx -> {
@@ -326,6 +333,30 @@ public final class CommandRegistrar {
                                                 return 0;
                                             }
                                         }))))
+                .then(ClientCommands.literal("regenerate")
+                        .executes(ctx -> {
+                            feedback(ctx.getSource(), tr("text.krypt04mcg.command.key_regenerate_confirm",
+                                    keyStoreService.regenerationFingerprint(), config.kemAlgorithm.identifier(),
+                                    config.signatureAlgorithm.identifier(), keyStoreService.regenerationFingerprint()));
+                            return 1;
+                        })
+                        .then(ClientCommands.argument("fingerprint", StringArgumentType.word())
+                                .executes(ctx -> {
+                                    try {
+                                        LocalKeyMaterial regenerated = keyStoreService.regenerate(
+                                                StringArgumentType.getString(ctx, "fingerprint"),
+                                                config.kemAlgorithm, config.signatureAlgorithm);
+                                        feedback(ctx.getSource(), tr("text.krypt04mcg.command.key_regenerated",
+                                                regenerated.kemPublicKey().fingerprint(),
+                                                regenerated.signaturePublicKey().fingerprint(),
+                                                regenerated.kemPublicKey().algorithm(),
+                                                regenerated.signaturePublicKey().algorithm()));
+                                        return 1;
+                                    } catch (Exception e) {
+                                        error(ctx.getSource(), e);
+                                        return 0;
+                                    }
+                                })))
                 .then(trustCommand("confirm", keyStoreService, keyTrustService, TrustState.VERIFIED))
                 .then(verifyCommand(keyStoreService, keyTrustService))
                 .then(trustCommand("trust", keyStoreService, keyTrustService, TrustState.TOFU_TRUSTED))
@@ -427,7 +458,8 @@ public final class CommandRegistrar {
             feedback(source, tr("text.krypt04mcg.status.session", sessionStatus));
             feedback(source, tr("text.krypt04mcg.status.last_decrypt", lastDecrypt));
             feedback(source, tr("text.krypt04mcg.status.algorithms",
-                    config.kemAlgorithm, config.signatureAlgorithm, config.aeadAlgorithm));
+                    config.kemAlgorithm.identifier(), config.signatureAlgorithm.identifier(),
+                    config.aeadAlgorithm.identifier()));
         } catch (Exception e) {
             error(source, e);
         }

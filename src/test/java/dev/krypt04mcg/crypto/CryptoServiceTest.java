@@ -1,5 +1,8 @@
 package dev.krypt04mcg.crypto;
 
+import dev.krypt04mcg.config.AeadAlgorithm;
+import dev.krypt04mcg.config.KemAlgorithm;
+import dev.krypt04mcg.config.SignatureAlgorithm;
 import dev.krypt04mcg.model.EncryptedPacket;
 import dev.krypt04mcg.model.LocalKeyMaterial;
 import dev.krypt04mcg.model.PacketType;
@@ -70,6 +73,23 @@ final class CryptoServiceTest {
 
         assertEquals(message, plaintext);
         assertTrue((packet.flags() & CryptoService.FLAG_COMPRESSED) != 0);
+    }
+
+    @Test
+    void packetAndKeyRecordsSelectMixedPostQuantumParameterSets() throws Exception {
+        CryptoService crypto = new CryptoService();
+        LocalKeyMaterial alice = crypto.generateLocalKeys("alice", "alice-uuid",
+                KemAlgorithm.ML_KEM_512, SignatureAlgorithm.ML_DSA_44);
+        LocalKeyMaterial bob = crypto.generateLocalKeys("bob", "bob-uuid",
+                KemAlgorithm.ML_KEM_768, SignatureAlgorithm.FALCON_1024);
+
+        EncryptedPacket packet = crypto.encryptFor(publicIdentity(bob), alice, "alice", "mixed suite", true,
+                false, AeadAlgorithm.CHACHA20_POLY1305);
+
+        assertEquals("ML-KEM-768", packet.algorithms().kem());
+        assertEquals("ML-DSA-44", packet.algorithms().signature());
+        assertEquals("ChaCha20-Poly1305", packet.algorithms().aead());
+        assertEquals("mixed suite", crypto.decrypt(packet, bob, publicIdentity(alice)));
     }
 
     @Test

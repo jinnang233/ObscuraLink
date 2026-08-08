@@ -38,6 +38,21 @@ final class PacketCodecKatTest {
     }
 
     @Test
+    void versionTwoAuthenticatesHkdfIdentifierWhileVersionOneStaysCompatible() {
+        PacketCodec codec = new PacketCodec();
+        EncryptedPacket legacy = knownPacket();
+        EncryptedPacket current = new EncryptedPacket(EncryptedPacket.VERSION, legacy.type(), legacy.flags(),
+                legacy.sender(), legacy.receiver(), legacy.timestampMillis(), legacy.messageId(),
+                legacy.aadFragmentIndex(), legacy.aadFragmentTotal(), legacy.algorithms(), legacy.nonce(),
+                legacy.kemCiphertext(), legacy.ciphertext(), legacy.signature());
+
+        assertArrayEquals(manualAad(legacy), codec.aadFor(legacy));
+        assertArrayEquals(manualAad(current), codec.aadFor(current));
+        assertEquals(codec.aadFor(legacy).length + 2 + legacy.algorithms().hkdf().length(),
+                codec.aadFor(current).length);
+    }
+
+    @Test
     void signatureInputAppendsTimestampNonceKemCiphertextWithoutSignature() throws Exception {
         PacketCodec codec = new PacketCodec();
         EncryptedPacket packet = knownPacket();
@@ -100,6 +115,9 @@ final class PacketCodecKatTest {
             writeString(out, packet.algorithms().kem());
             writeString(out, packet.algorithms().signature());
             writeString(out, packet.algorithms().aead());
+            if (packet.protocolVersion() >= EncryptedPacket.VERSION) {
+                writeString(out, packet.algorithms().hkdf());
+            }
             return bytes.toByteArray();
         } catch (Exception e) {
             throw new AssertionError(e);

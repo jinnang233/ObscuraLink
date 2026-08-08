@@ -47,6 +47,9 @@ public final class PacketCodec {
         try {
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(encoded));
             byte version = in.readByte();
+            if (version != EncryptedPacket.LEGACY_VERSION && version != EncryptedPacket.VERSION) {
+                throw new IOException("Unsupported protocol version: " + Byte.toUnsignedInt(version));
+            }
             PacketType type = PacketType.fromId(in.readUnsignedByte());
             byte flags = in.readByte();
             String sender = readString(in);
@@ -88,6 +91,9 @@ public final class PacketCodec {
             writeString(out, packet.algorithms().kem());
             writeString(out, packet.algorithms().signature());
             writeString(out, packet.algorithms().aead());
+            if (packet.protocolVersion() >= EncryptedPacket.VERSION) {
+                writeString(out, packet.algorithms().hkdf());
+            }
             return bytes.toByteArray();
         } catch (IOException e) {
             throw new IllegalStateException("Unexpected AAD encoding failure", e);

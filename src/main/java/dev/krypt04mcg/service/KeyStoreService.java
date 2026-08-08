@@ -1,6 +1,8 @@
 package dev.krypt04mcg.service;
 
 import com.google.gson.Gson;
+import dev.krypt04mcg.config.KemAlgorithm;
+import dev.krypt04mcg.config.SignatureAlgorithm;
 import dev.krypt04mcg.crypto.CryptoException;
 import dev.krypt04mcg.crypto.CryptoService;
 import dev.krypt04mcg.model.KeyRecord;
@@ -14,6 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +39,11 @@ public final class KeyStoreService {
     }
 
     public void init(String owner, String uuid) throws IOException, CryptoException {
+        init(owner, uuid, KemAlgorithm.CMCE_MCELIECE348864, SignatureAlgorithm.FALCON_512);
+    }
+
+    public void init(String owner, String uuid, KemAlgorithm kemAlgorithm, SignatureAlgorithm signatureAlgorithm)
+            throws IOException, CryptoException {
         Files.createDirectories(keysDir.resolve("private"));
         Files.createDirectories(keysDir.resolve("public"));
         Files.createDirectories(root.resolve("sessions"));
@@ -44,7 +54,7 @@ public final class KeyStoreService {
             return;
         }
         String stableUuid = uuid == null || uuid.isBlank() ? UUID.randomUUID().toString() : uuid;
-        local = cryptoService.generateLocalKeys(owner, stableUuid);
+        local = cryptoService.generateLocalKeys(owner, stableUuid, kemAlgorithm, signatureAlgorithm);
         write(localFile, local);
         exportOwnPublicFile();
     }
@@ -64,13 +74,30 @@ public final class KeyStoreService {
 
     public PublicKeyExport exportOwnPublicFile() throws IOException {
         PublicIdentity identity = ownPublicIdentity();
-        String json = gson.toJson(identity);
-        Files.writeString(keysDir.resolve("public").resolve("self-public.json"), json, StandardCharsets.UTF_8);
+        write(keysDir.resolve("public").resolve("self-public.json"), identity);
         Path exportDir = root.resolve("export");
         Files.createDirectories(exportDir);
         Path exportFile = exportDir.resolve("self-public.json");
-        Files.writeString(exportFile, json, StandardCharsets.UTF_8);
+        write(exportFile, identity);
         return new PublicKeyExport(exportFile.toAbsolutePath().normalize(), identity);
+    }
+
+    public String regenerationFingerprint() {
+        return local().kemPublicKey().fingerprint();
+    }
+
+    public LocalKeyMaterial regenerate(String fingerprint, KemAlgorithm kemAlgorithm,
+                                       SignatureAlgorithm signatureAlgorithm) throws IOException, CryptoException {
+        if (!fingerprintMatches(regenerationFingerprint(), fingerprint)) {
+            throw new CryptoException("Regeneration fingerprint does not match the current local key");
+        }
+        LocalKeyMaterial current = local();
+        LocalKeyMaterial regenerated = cryptoService.generateLocalKeys(current.kemPublicKey().owner(),
+                current.kemPublicKey().uuid(), kemAlgorithm, signatureAlgorithm);
+        write(keysDir.resolve("private").resolve("local.json"), regenerated);
+        local = regenerated;
+        exportOwnPublicFile();
+        return regenerated;
     }
 
     public PublicIdentity importPublicIdentity(String player, String dataOrFile) throws IOException {
@@ -209,7 +236,27 @@ public final class KeyStoreService {
     }
 
     private void write(Path path, Object value) throws IOException {
-        Files.writeString(path, gson.toJson(value), StandardCharsets.UTF_8);
+        Files.createDirectories(path.getParent());
+        Path temporary = Files.createTempFile(path.getParent(), path.getFileName().toString(), ".tmp");
+        try {
+            Files.writeString(temporary, gson.toJson(value), StandardCharsets.UTF_8);
+            try {
+                Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+    }
+
+    private static boolean fingerprintMatches(String expected, String supplied) {
+        if (expected == null || supplied == null) {
+            return false;
+        }
+        byte[] expectedBytes = expected.trim().toLowerCase(java.util.Locale.ROOT).getBytes(StandardCharsets.UTF_8);
+        byte[] suppliedBytes = supplied.trim().toLowerCase(java.util.Locale.ROOT).getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(expectedBytes, suppliedBytes);
     }
 
     private static String normalize(String player) {

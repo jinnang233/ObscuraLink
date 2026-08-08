@@ -60,7 +60,8 @@ public final class ChatSendService {
                     .orElseThrow(() -> new IllegalStateException(ClientMessages.tr("text.krypt04mcg.error.no_public_key", receiver)));
             ensureSendAllowed(receiver, identity);
             EncryptedPacket packet = cryptoService.encryptFor(identity, keyStoreService.local(),
-                    keyStoreService.local().kemPublicKey().owner(), message, sign, config.enableCompression);
+                    keyStoreService.local().kemPublicKey().owner(), message, sign, config.enableCompression,
+                    config.aeadAlgorithm);
             sendPacket(packet, receiver);
             system.accept(ClientMessages.tr("text.krypt04mcg.sent_encrypted", receiver));
             return true;
@@ -97,9 +98,9 @@ public final class ChatSendService {
             PublicIdentity identity = keyStoreService.findPublicIdentity(receiver)
                     .orElseThrow(() -> new IllegalStateException(ClientMessages.tr("text.krypt04mcg.error.no_public_key", receiver)));
             ensureSendAllowed(receiver, identity);
-            EncryptedPacket packet = cryptoService.encryptWithSession(receiver, keyStoreService.local(),
+            EncryptedPacket packet = cryptoService.encryptWithSession(identity, keyStoreService.local(),
                     keyStoreService.local().kemPublicKey().owner(), Base64Url.decode(session.secret()), message,
-                    true, config.enableCompression);
+                    true, config.enableCompression, config.aeadAlgorithm);
             sendPacket(packet, receiver);
             sessionService.recordMessage(receiver, message.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
             system.accept(ClientMessages.tr("text.krypt04mcg.sent_encrypted", receiver));
