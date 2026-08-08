@@ -12,6 +12,7 @@ import dev.krypt04mcg.fragment.FragmentReassembler;
 import dev.krypt04mcg.fragment.FragmentService;
 import dev.krypt04mcg.gui.Krypt04McgChatScreen;
 import dev.krypt04mcg.input.Krypt04McgKeyBindings;
+import dev.krypt04mcg.model.ChatSendFragment;
 import dev.krypt04mcg.protocol.PacketCodec;
 import dev.krypt04mcg.service.DecryptionHistoryService;
 import dev.krypt04mcg.service.GroupService;
@@ -120,8 +121,9 @@ public final class Krypt04McgMod implements ClientModInitializer {
         client.gui.setScreen(new Krypt04McgChatScreen(chatSendService, keyStoreService, groupService, conversationStore));
     }
 
-    private void sendChatLine(String line) {
+    private void sendChatLine(ChatSendFragment chatSendFragment) {
         Minecraft client = Minecraft.getInstance();
+        String line = chatSendFragment.fragment();
         if (!line.startsWith(FragmentService.PREFIX + " ")) {
             LOGGER.warn("Refusing to send non-Krypt04Mcg chat line");
             return;

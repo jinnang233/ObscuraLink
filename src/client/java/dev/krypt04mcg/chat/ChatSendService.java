@@ -5,6 +5,7 @@ import dev.krypt04mcg.config.Krypt04McgConfig;
 import dev.krypt04mcg.crypto.CryptoService;
 import dev.krypt04mcg.fragment.FragmentService;
 import dev.krypt04mcg.model.CachedSentMessage;
+import dev.krypt04mcg.model.ChatSendFragment;
 import dev.krypt04mcg.model.EncryptedPacket;
 import dev.krypt04mcg.model.PublicIdentity;
 import dev.krypt04mcg.model.SessionRecord;
@@ -18,6 +19,7 @@ import dev.krypt04mcg.util.Base64Url;
 import dev.krypt04mcg.util.Hex;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 public final class ChatSendService {
@@ -29,13 +31,13 @@ public final class ChatSendService {
     private final CryptoService cryptoService;
     private final PacketCodec packetCodec;
     private final FragmentService fragmentService;
-    private final Consumer<String> chatSender;
+    private Consumer<ChatSendFragment> chatSender;
     private final Consumer<String> system;
 
     public ChatSendService(Krypt04McgConfig config, KeyStoreService keyStoreService, KeyTrustService keyTrustService,
                            SessionService sessionService, SentMessageCacheService sentMessageCacheService,
                            CryptoService cryptoService, PacketCodec packetCodec, FragmentService fragmentService,
-                           Consumer<String> chatSender, Consumer<String> system) {
+                           Consumer<ChatSendFragment> chatSender, Consumer<String> system) {
         this.config = config;
         this.keyStoreService = keyStoreService;
         this.keyTrustService = keyTrustService;
@@ -44,8 +46,12 @@ public final class ChatSendService {
         this.cryptoService = cryptoService;
         this.packetCodec = packetCodec;
         this.fragmentService = fragmentService;
-        this.chatSender = chatSender;
+        this.chatSender = Objects.requireNonNull(chatSender, "chatSender");
         this.system = system;
+    }
+
+    public void setChatSender(Consumer<ChatSendFragment> chatSender) {
+        this.chatSender = Objects.requireNonNull(chatSender, "chatSender");
     }
 
     public boolean sendKemMessage(String receiver, String message, boolean sign) {
@@ -136,7 +142,7 @@ public final class ChatSendService {
     }
 
     private void resend(CachedSentMessage cached) {
-        sendFragments(cached.fragments());
+        sendFragments(cached.receiver(), cached.fragments());
         system.accept(ClientMessages.tr("text.krypt04mcg.resending", cached.receiver(), cached.messageId()));
     }
 
@@ -144,13 +150,13 @@ public final class ChatSendService {
         byte[] encoded = packetCodec.encode(packet);
         List<String> fragments = fragmentService.fragment(encoded, packet.messageId(), config.fragmentSize);
         sentMessageCacheService.remember(Hex.encode(packet.messageId()), receiver, fragments);
-        sendFragments(fragments);
+        sendFragments(receiver, fragments);
     }
 
-    private void sendFragments(List<String> fragments) {
+    private void sendFragments(String receiver, List<String> fragments) {
         Thread sender = new Thread(() -> {
             for (String fragment : fragments) {
-                chatSender.accept(fragment);
+                chatSender.accept(new ChatSendFragment(receiver, fragment, EncryptedPacket.VERSION));
                 if (config.showProgress) {
                     system.accept(ClientMessages.tr("text.krypt04mcg.fragment_sent"));
                 }
