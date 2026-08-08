@@ -104,23 +104,24 @@ Build the project, then copy `build/libs/krypt04mcg-<version>.jar` into the clie
 Krypt04Mcg stores data under:
 
 ```text
-config/krypt04mcg/
+config/krypt04mcg/accounts/<minecraft-uuid>/
   keys/
     private/local.json
     public/*.json
   export/
   sessions/
   cache/
+  secrets/master.key
 ```
 
-Private and public key material are stored separately. Public-key records include algorithm, owner, UUID, fingerprint, creation time, and Base64URL key data.
-`/enc key export` writes your shareable public key JSON to `config/krypt04mcg/export/self-public.json`.
+Private and public key material are stored separately and scoped to the active Minecraft account. Private keys, trust bindings, session secrets, and enabled conversation history are encrypted with AES-256-GCM. On Windows, the storage master key is protected with per-user DPAPI; other platforms use an explicitly owner-only master-key file. Sensitive writes are atomic and owner-only permissions are applied where the platform supports them. Public-key records include algorithm, owner, UUID, a full SHA-256 fingerprint, creation time, and Base64URL key data.
+`/enc key export` writes your shareable public key JSON inside the active account's `export` directory.
 
 The KEM and signature selections only apply when no local key exists or when a key is explicitly regenerated. Changing the configuration never rewrites an existing key. Encryption, signing, verification, and decryption resolve algorithms from key records and packet algorithm identifiers rather than assuming the current configuration.
 
 Supported key selections are all ten Bouncy Castle CMCE parameter sets, ML-KEM-512/768/1024, Falcon-512/1024,
 ML-DSA-44/65/87, and all 24 SLH-DSA variants (the 12 SHA2/SHAKE parameter sets in both pure and pre-hash forms).
-The defaults remain `CMCE/mceliece348864`, `Falcon-512`, and `AES-256-GCM`.
+The long-term defaults remain `CMCE/mceliece348864`, `Falcon-512`, and `AES-256-GCM`. The independently configurable ephemeral KEM used only by `/enc exchange` and `/enc etell` sessions defaults to `ML-KEM-768`.
 
 ## Commands
 
@@ -145,8 +146,7 @@ The defaults remain `CMCE/mceliece348864`, `Falcon-512`, and `AES-256-GCM`.
 /enc key import <player> <data-or-file>
 /enc key regenerate
 /enc key regenerate <current-kem-fingerprint>
-/enc key verify <player> <fingerprint>
-/enc key confirm <player>
+/enc key verify <player> <kem-fingerprint>:<signature-fingerprint>
 /enc key trust <player>
 /enc key distrust <player>
 ```
@@ -157,6 +157,7 @@ Import flow:
 2. They send you the exported JSON file through a trusted side channel and tell you the printed fingerprints.
 3. You run `/enc key import <player> <file-or-json>`.
 4. First import is trusted automatically. If a key changes later, Krypt04Mcg refuses to overwrite it silently.
+5. To mark the identity `VERIFIED`, compare both full fingerprints out of band and pass their colon-separated pair to `/enc key verify`.
 
 Regeneration flow:
 
@@ -178,13 +179,9 @@ bytes senderUtf8
 u16  receiverLength
 bytes receiverUtf8
 i64  timestampMillis
-16   messageId
-i16  aadFragmentIndex
-i16  aadFragmentTotal
-u16  kemAlgorithmLength
-bytes kemAlgorithmUtf8
-u16  signatureAlgorithmLength
-bytes signatureAlgorithmUtf8
+ 16   messageId
+ [u16 kemAlgorithmLength + bytes kemAlgorithmUtf8]
+ [u16 signatureAlgorithmLength + bytes signatureAlgorithmUtf8]
 u16  aeadAlgorithmLength
 bytes aeadAlgorithmUtf8
 u16  hkdfAlgorithmLength
@@ -199,7 +196,7 @@ i32  signatureLength
 bytes signature
 ```
 
-Protocol v2 retains this layout. It adds the HKDF identifier to authenticated AAD. The decoder still accepts v1 packets and reproduces their original AAD rules, so existing stored keys and in-flight v1 messages remain compatible.
+The bracketed v3 fields are conditional: KEM identifiers are omitted from session messages, and signature identifiers are omitted from unsigned messages. Protocol v3 also removes the obsolete packet-level fragment index/total fields. The decoder retains the original v1/v2 layout and AAD rules for compatibility.
 
 Packet types:
 
@@ -215,10 +212,13 @@ Packet types:
 - `SecureRandom` generates message IDs, nonces, KEM randomness, and session material.
 - KEM shared secrets are never used directly as AEAD keys.
 - HKDF-SHA256 derives AEAD keys with the message ID as salt.
-- AEAD AAD covers protocol version, packet type, flags, sender, receiver, message ID, packet-level fragment fields, and algorithm identifiers (including HKDF in v2).
+- Protocol v3 AEAD AAD covers protocol version, packet type, flags, sender, receiver, timestamp, message ID, and all present algorithm identifiers. Timestamp tampering therefore fails even for unsigned packets.
 - Incoming packets select their supported algorithms from the authenticated protocol identifiers; the KEM and signature identifiers must match the corresponding stored key records.
 - Signatures cover AAD plus timestamp, nonce, KEM encapsulation, and ciphertext.
 - Decryption rejects wrong receivers before attempting plaintext display.
+- The authenticated packet sender must match the outer Minecraft sender; transports without an authenticated sender accept signed packets only.
+- `DISTRUSTED` identities are rejected before decryption or session state changes. Verified trust records bind the player name and both public-key fingerprints.
+- Accepted timestamps have a bounded freshness window, replay records are retained per sender, and session messages authenticate the session epoch and a monotonic sequence number before counters advance.
 - Decryption failures do not display garbage plaintext.
 - Signature failures are displayed explicitly as invalid.
 
@@ -252,7 +252,9 @@ Client send mode `CUSTOM_PAYLOAD` only sends on this channel when Fabric reports
 
 ## Session Design
 
-`/enc exchange` creates and persists local session material, then sends the session data inside a signed encrypted KEM envelope. `/enc etell` currently uses the same signed KEM envelope while keeping the session API and storage in place. The protocol already reserves packet types for direct PSK session packets.
+`/enc exchange` is a signed two-message handshake using the dedicated `SESSION_EXCHANGE` packet type. The initiator creates an in-memory one-time KEM key pair (ML-KEM-768 by default); the responder encrypts fresh session material only to that temporary public key and binds both identities, UUIDs, both fingerprint pairs, the session ID, and the request message ID into the exchange transcript. The initiator destroys the temporary private key after accepting the response or after a short timeout. Consequently, later compromise of either long-term KEM private key does not decrypt a recorded exchange response.
+
+`/enc etell` uses the resulting session secret with a signed `SESSION_MESSAGE` packet. Its encrypted payload carries the authenticated session ID and monotonic sequence. `tell` and `stell` continue to use their existing long-term recipient KEM path and do not use the ephemeral KEM setting.
 
 ## GUI Chat
 
@@ -261,18 +263,16 @@ The encrypted chat panel can be opened with the configured Krypt04Mcg key bindin
 Recent plaintext conversation history is cached locally under:
 
 ```text
-config/krypt04mcg/cache/conversations.json
+config/krypt04mcg/accounts/<minecraft-uuid>/cache/conversations.json
 ```
 
-The cache is bounded to the most recent 300 entries.
-This can be disabled with the `enableConversationHistory` config option.
+The encrypted cache is bounded to the most recent 300 entries and is disabled by default. It can be enabled with the `enableConversationHistory` config option.
 
 ## Known Limitations
 
 - This is a client-only chat transport. Server chat filtering, signing, rate limits, and antispam plugins may interfere with large encrypted payloads.
 - Minecraft chat channels have a limited number of characters per message, so fragmentation is expected.
-- Direct PSK-only session packets are reserved but not yet enabled as the default sending path.
-- Public-key authenticity is TOFU-based; verify fingerprints out of band for stronger protection.
+- First import remains TOFU-based; verify the complete KEM/signature fingerprint pair out of band for stronger protection.
 
 ## Tests
 

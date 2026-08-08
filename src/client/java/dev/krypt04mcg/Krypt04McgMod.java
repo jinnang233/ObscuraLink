@@ -22,6 +22,8 @@ import dev.krypt04mcg.service.KeyStoreService;
 import dev.krypt04mcg.service.KeyTrustService;
 import dev.krypt04mcg.service.SentMessageCacheService;
 import dev.krypt04mcg.service.SessionService;
+import dev.krypt04mcg.service.SessionHandshakeService;
+import dev.krypt04mcg.util.AccountStorage;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -50,6 +52,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
     private Krypt04McgConfig config;
     private KeyStoreService keyStoreService;
     private SessionService sessionService;
+    private SessionHandshakeService sessionHandshakeService;
     private DecryptionHistoryService decryptionHistoryService;
     private GroupService groupService;
     private KeyTrustService keyTrustService;
@@ -73,35 +76,47 @@ public final class Krypt04McgMod implements ClientModInitializer {
         CryptoService cryptoService = new CryptoService();
         fragmentService = new FragmentService();
         FragmentReassembler reassembler = new FragmentReassembler();
-        Path root = FabricLoader.getInstance().getConfigDir().resolve("krypt04mcg");
+        Minecraft client = Minecraft.getInstance();
+        String owner = client.getUser().getName();
+        String uuid = client.getUser().getProfileId() == null ? "" : client.getUser().getProfileId().toString();
+        Path baseRoot = FabricLoader.getInstance().getConfigDir().resolve("krypt04mcg");
+        Path root;
+        try {
+            root = AccountStorage.resolve(baseRoot, owner, uuid);
+        } catch (Exception e) {
+            LOGGER.error("Unable to initialize account-scoped Krypt04Mcg storage", e);
+            system(ClientMessages.tr("text.krypt04mcg.error.key_init_failed"));
+            return;
+        }
         keyStoreService = new KeyStoreService(root, cryptoService);
         sessionService = new SessionService(root);
+        sessionHandshakeService = new SessionHandshakeService(cryptoService, sessionService);
         decryptionHistoryService = new DecryptionHistoryService(root);
         groupService = new GroupService(root);
         keyTrustService = new KeyTrustService(root);
         sentMessageCacheService = new SentMessageCacheService(root);
         conversationStore = new ChatConversationStore(root, () -> config.enableConversationHistory);
 
-        Minecraft client = Minecraft.getInstance();
-        String owner = client.getUser().getName();
-        String uuid = client.getUser().getProfileId() == null ? "" : client.getUser().getProfileId().toString();
         try {
             keyStoreService.init(owner, uuid, config.kemAlgorithm, config.signatureAlgorithm);
+            sessionService.migrateLegacyFiles();
         } catch (Exception e) {
             LOGGER.error("Unable to initialize Krypt04Mcg keys", e);
             system(ClientMessages.tr("text.krypt04mcg.error.key_init_failed"));
             return;
         }
 
-        chatSendService = new ChatSendService(config, keyStoreService, keyTrustService, sessionService, sentMessageCacheService, cryptoService, packetCodec,
+        chatSendService = new ChatSendService(config, keyStoreService, keyTrustService, sessionService,
+                sessionHandshakeService, sentMessageCacheService, cryptoService, packetCodec,
                 fragmentService, this::sendChatLine, this::system);
         applyChatSender();
         OptionalClothConfig.registerSaveListener(updated -> {
             ClientMessages.setMessagePrefix(updated.messagePrefix);
             applyChatSender();
         });
-        chatReceiveHandler = new ChatReceiveHandler(config, keyStoreService, cryptoService, packetCodec, fragmentService,
-                reassembler, decryptionHistoryService, sessionService, this::system, conversationStore::incoming);
+        chatReceiveHandler = new ChatReceiveHandler(config, keyStoreService, keyTrustService, cryptoService,
+                packetCodec, fragmentService, reassembler, decryptionHistoryService, sessionService,
+                sessionHandshakeService, chatSendService::sendPacket, this::system, conversationStore::incoming);
         registerCustomPayloadNetworking();
 
         CommandRegistrar.register(chatSendService, keyStoreService, keyTrustService, sessionService, decryptionHistoryService,
@@ -188,7 +203,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
         PayloadTypeRegistry.serverboundPlay().register(ChatFragmentPayload.TYPE, ChatFragmentPayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(ChatFragmentPayload.TYPE, ChatFragmentPayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(ChatFragmentPayload.TYPE, (payload, context) ->
-                chatReceiveHandler.handle(payload.receiver(), payload.fragment()));
+                chatReceiveHandler.handle(null, payload.fragment()));
     }
 
     static String formatServerCommand(String template, ChatSendFragment fragment) {

@@ -5,8 +5,10 @@ import dev.krypt04mcg.config.SignatureAlgorithm;
 import dev.krypt04mcg.crypto.CryptoException;
 import dev.krypt04mcg.crypto.CryptoService;
 import dev.krypt04mcg.model.LocalKeyMaterial;
+import dev.krypt04mcg.model.KeyRecord;
 import dev.krypt04mcg.model.PublicIdentity;
 import dev.krypt04mcg.util.JsonSupport;
+import dev.krypt04mcg.util.SensitiveFileStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 final class KeyStoreServiceTest {
     @TempDir
@@ -34,6 +37,9 @@ final class KeyStoreServiceTest {
         assertTrue(Files.exists(localKeys));
         assertTrue(Files.exists(publicKeys));
         assertTrue(Files.exists(exportedPublicKeys));
+        assertTrue(SensitiveFileStore.isEncrypted(localKeys));
+        assertFalse(new String(Files.readAllBytes(localKeys), java.nio.charset.StandardCharsets.ISO_8859_1)
+                .contains("keyData"));
 
         KeyStoreService second = new KeyStoreService(tempDir, cryptoService);
         second.init("alice", "alice-uuid");
@@ -149,6 +155,47 @@ final class KeyStoreServiceTest {
         } finally {
             Files.deleteIfExists(outside);
         }
+    }
+
+    @Test
+    void recomputesImportedFingerprintsFromDecodedPublicKeys() throws Exception {
+        CryptoService cryptoService = new CryptoService();
+        KeyStoreService keyStoreService = new KeyStoreService(tempDir, cryptoService);
+        keyStoreService.init("alice", "alice-uuid");
+        PublicIdentity peer = publicIdentity(cryptoService.generateLocalKeys("bob", "bob-uuid"));
+        KeyRecord forgedKem = new KeyRecord(peer.kemPublicKey().algorithm(), peer.kemPublicKey().owner(),
+                peer.kemPublicKey().uuid(), "00".repeat(32), peer.kemPublicKey().createdAt(),
+                peer.kemPublicKey().keyData());
+        PublicIdentity forged = new PublicIdentity(peer.owner(), peer.uuid(), forgedKem, peer.signaturePublicKey());
+
+        PublicIdentity imported = keyStoreService.importPublicIdentity("bob",
+                JsonSupport.prettyGson().toJson(forged));
+
+        assertEquals(peer.kemPublicKey().fingerprint(), imported.kemPublicKey().fingerprint());
+        assertNotEquals(forgedKem.fingerprint(), imported.kemPublicKey().fingerprint());
+        assertEquals(64, imported.kemPublicKey().fingerprint().length());
+    }
+
+    @Test
+    void rejectsInnerIdentityAndPublicRoleMismatches() throws Exception {
+        CryptoService cryptoService = new CryptoService();
+        KeyStoreService keyStoreService = new KeyStoreService(tempDir, cryptoService);
+        keyStoreService.init("alice", "alice-uuid");
+        PublicIdentity peer = publicIdentity(cryptoService.generateLocalKeys("bob", "bob-uuid"));
+        KeyRecord wrongOwner = new KeyRecord(peer.kemPublicKey().algorithm(), "mallory", peer.uuid(),
+                peer.kemPublicKey().fingerprint(), peer.kemPublicKey().createdAt(), peer.kemPublicKey().keyData());
+        PublicIdentity ownerMismatch = new PublicIdentity(peer.owner(), peer.uuid(), wrongOwner,
+                peer.signaturePublicKey());
+        KeyRecord wrongRole = new KeyRecord(peer.kemPublicKey().algorithm().replace("/public", "/private"),
+                peer.owner(), peer.uuid(), peer.kemPublicKey().fingerprint(), peer.kemPublicKey().createdAt(),
+                peer.kemPublicKey().keyData());
+        PublicIdentity roleMismatch = new PublicIdentity(peer.owner(), peer.uuid(), wrongRole,
+                peer.signaturePublicKey());
+
+        assertThrows(Exception.class, () -> keyStoreService.importPublicIdentity("bob",
+                JsonSupport.prettyGson().toJson(ownerMismatch)));
+        assertThrows(Exception.class, () -> keyStoreService.importPublicIdentity("bob",
+                JsonSupport.prettyGson().toJson(roleMismatch)));
     }
 
     private static PublicIdentity publicIdentity(LocalKeyMaterial material) {

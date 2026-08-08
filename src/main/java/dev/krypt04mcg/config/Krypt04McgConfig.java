@@ -6,7 +6,7 @@ public class Krypt04McgConfig {
     public boolean verboseMessages = false;
     public boolean enableCompression = true;
     public boolean showReceiveProgress = true;
-    public boolean enableConversationHistory = true;
+    public boolean enableConversationHistory = false;
     public boolean showDisclaimerWarning = true;
 
     public int fragmentSize = 180;
@@ -14,6 +14,10 @@ public class Krypt04McgConfig {
     public int sendDelayMs = 250;
 
     public int sessionTtlMinutes = 60;
+
+    public int maxPacketAgeSeconds = 300;
+
+    public int maxFutureSkewSeconds = 60;
 
     public int maxMessagesPerSession = 100;
 
@@ -30,6 +34,7 @@ public class Krypt04McgConfig {
             java.util.List.of("^<(?<player>[^>]+)>\\s*(?<message>.*)$"));
     public String shadowListenRegex = "^<(?<player>[^>]+)>\\s*(?<message>.*)$";
     public KemAlgorithm kemAlgorithm = KemAlgorithm.CMCE_MCELIECE348864;
+    public KemAlgorithm ephemeralKemAlgorithm = KemAlgorithm.ML_KEM_768;
     public SignatureAlgorithm signatureAlgorithm = SignatureAlgorithm.FALCON_512;
     public AeadAlgorithm aeadAlgorithm = AeadAlgorithm.AES_256_GCM;
 }

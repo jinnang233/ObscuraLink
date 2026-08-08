@@ -4,12 +4,14 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import dev.krypt04mcg.util.Hex;
 import dev.krypt04mcg.util.JsonSupport;
+import dev.krypt04mcg.util.SecureFiles;
 
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Locale;
@@ -21,7 +23,8 @@ public final class DecryptionHistoryService {
     }.getType();
     private static final String PACKET_PREFIX = "packet:";
     private static final String NONCE_PREFIX = "nonce:";
-    private static final int MAX_REPLAY_ENTRIES = 2048;
+    private static final int MAX_REPLAY_ENTRIES_PER_PLAYER = 32_768;
+    private static final Duration REPLAY_RETENTION = Duration.ofMinutes(65);
 
     private final Path historyFile;
     private final Gson gson = JsonSupport.prettyGson();
@@ -33,8 +36,7 @@ public final class DecryptionHistoryService {
     public synchronized void recordSuccess(String player) throws IOException {
         Map<String, Instant> history = readHistory();
         history.put(normalize(player), Instant.now());
-        Files.createDirectories(historyFile.getParent());
-        Files.writeString(historyFile, gson.toJson(history, HISTORY_TYPE), StandardCharsets.UTF_8);
+        writeHistory(history);
     }
 
     public synchronized Optional<Instant> lastSuccess(String player) throws IOException {
@@ -46,15 +48,21 @@ public final class DecryptionHistoryService {
         String normalized = normalize(player);
         String packetKey = PACKET_PREFIX + normalized + ":" + Hex.encode(messageId);
         String nonceKey = NONCE_PREFIX + normalized + ":" + Hex.encode(nonce);
+        Instant now = Instant.now();
+        pruneExpiredReplayEntries(history, now);
         if (history.containsKey(packetKey) || history.containsKey(nonceKey)) {
             return false;
         }
-        Instant now = Instant.now();
+        String packetPlayerPrefix = PACKET_PREFIX + normalized + ":";
+        String noncePlayerPrefix = NONCE_PREFIX + normalized + ":";
+        long playerEntries = history.keySet().stream()
+                .filter(key -> key.startsWith(packetPlayerPrefix) || key.startsWith(noncePlayerPrefix)).count();
+        if (playerEntries > MAX_REPLAY_ENTRIES_PER_PLAYER - 2) {
+            return false;
+        }
         history.put(packetKey, now);
         history.put(nonceKey, now);
-        trimReplayEntries(history);
-        Files.createDirectories(historyFile.getParent());
-        Files.writeString(historyFile, gson.toJson(history, HISTORY_TYPE), StandardCharsets.UTF_8);
+        writeHistory(history);
         return true;
     }
 
@@ -66,18 +74,13 @@ public final class DecryptionHistoryService {
         return history == null ? new HashMap<>() : new HashMap<>(history);
     }
 
-    private static void trimReplayEntries(Map<String, Instant> history) {
-        while (history.keySet().stream().filter(DecryptionHistoryService::isReplayKey).count() > MAX_REPLAY_ENTRIES) {
-            String oldest = history.entrySet().stream()
-                    .filter(entry -> isReplayKey(entry.getKey()))
-                    .min(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElse(null);
-            if (oldest == null) {
-                return;
-            }
-            history.remove(oldest);
-        }
+    private void writeHistory(Map<String, Instant> history) throws IOException {
+        SecureFiles.atomicWrite(historyFile, gson.toJson(history, HISTORY_TYPE).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void pruneExpiredReplayEntries(Map<String, Instant> history, Instant now) {
+        Instant cutoff = now.minus(REPLAY_RETENTION);
+        history.entrySet().removeIf(entry -> isReplayKey(entry.getKey()) && entry.getValue().isBefore(cutoff));
     }
 
     private static boolean isReplayKey(String key) {

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import dev.krypt04mcg.util.SensitiveFileStore;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,11 +15,15 @@ final class ChatConversationStoreTest {
     private Path tempDir;
 
     @Test
-    void persistsAndReloadsConversationHistory() {
+    void persistsAndReloadsConversationHistory() throws Exception {
         ChatConversationStore first = new ChatConversationStore(tempDir);
         first.outgoing("alice", "hello alice");
         first.incoming("bob", "hello back");
         first.outgoingGroup("team", "hello team");
+        Path history = tempDir.resolve("cache").resolve("conversations.json");
+        assertTrue(SensitiveFileStore.isEncrypted(history));
+        assertTrue(!new String(Files.readAllBytes(history), java.nio.charset.StandardCharsets.ISO_8859_1)
+                .contains("hello alice"));
 
         ChatConversationStore second = new ChatConversationStore(tempDir);
 

@@ -17,7 +17,8 @@ public record EncryptedPacket(
         byte[] signature
 ) {
     public static final byte LEGACY_VERSION = 1;
-    public static final byte VERSION = 2;
+    public static final byte PREVIOUS_VERSION = 2;
+    public static final byte VERSION = 3;
 
     public boolean signed() {
         return signature != null && signature.length > 0;

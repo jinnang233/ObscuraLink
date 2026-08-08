@@ -47,6 +47,7 @@ public final class CryptoService {
     public static final int MESSAGE_ID_BYTES = 16;
     public static final byte FLAG_SIGNED = 0x01;
     public static final byte FLAG_COMPRESSED = 0x02;
+    public static final byte FLAG_SESSION_RESPONSE = 0x04;
     public static final int MAX_PLAINTEXT_BYTES = 64 * 1024;
     private static final int NONCE_BYTES = 12;
     private static final int AEAD_KEY_BYTES = 32;
@@ -118,13 +119,28 @@ public final class CryptoService {
     public EncryptedPacket encryptFor(PublicIdentity receiver, LocalKeyMaterial senderKeys, String sender, String message,
                                       boolean sign, boolean compress, AeadAlgorithm aeadAlgorithm)
             throws CryptoException {
-        KemAlgorithm kemAlgorithm = kemAlgorithm(receiver.kemPublicKey());
+        return encryptForKem(receiver.kemPublicKey(), receiver.owner(), senderKeys, sender, message, sign, compress,
+                aeadAlgorithm, sign ? PacketType.SIGNED_KEM_MESSAGE : PacketType.KEM_MESSAGE, (byte) 0);
+    }
+
+    public EncryptedPacket encryptSessionExchange(KeyRecord receiverKem, String receiver, LocalKeyMaterial senderKeys,
+                                                   String sender, String payload, boolean response, boolean compress,
+                                                   AeadAlgorithm aeadAlgorithm) throws CryptoException {
+        return encryptForKem(receiverKem, receiver, senderKeys, sender, payload, true, compress, aeadAlgorithm,
+                PacketType.SESSION_EXCHANGE, response ? FLAG_SESSION_RESPONSE : 0);
+    }
+
+    private EncryptedPacket encryptForKem(KeyRecord receiverKem, String receiver, LocalKeyMaterial senderKeys,
+                                          String sender, String message, boolean sign, boolean compress,
+                                          AeadAlgorithm aeadAlgorithm, PacketType packetType, byte extraFlags)
+            throws CryptoException {
+        KemAlgorithm kemAlgorithm = kemAlgorithm(receiverKem);
         SignatureAlgorithm signatureAlgorithm = signatureAlgorithm(senderKeys.signaturePrivateKey());
         AeadAlgorithm selectedAead = aeadAlgorithm == null ? AeadAlgorithm.AES_256_GCM : aeadAlgorithm;
         try {
             byte[] messageId = randomMessageId();
             PublicKey kemPublic = decodePublicKey(kemAlgorithm.jcaName(), kemAlgorithm.provider(),
-                    receiver.kemPublicKey().keyData());
+                    receiverKem.keyData());
             KeyGenerator keyGenerator = KeyGenerator.getInstance(kemAlgorithm.jcaName(), kemAlgorithm.provider());
             keyGenerator.init(new KEMGenerateSpec.Builder(kemPublic, "AES", AEAD_KEY_BYTES * 8)
                     .withNoKdf().build(), secureRandom);
@@ -135,13 +151,15 @@ public final class CryptoService {
             byte[] nonce = randomNonce();
             byte[] plaintext = message.getBytes(StandardCharsets.UTF_8);
             ensurePlaintextSize(plaintext);
-            byte flags = (byte) ((sign ? FLAG_SIGNED : 0) | (compress ? FLAG_COMPRESSED : 0));
+            byte flags = (byte) ((sign ? FLAG_SIGNED : 0) | (compress ? FLAG_COMPRESSED : 0) | extraFlags);
             byte[] payload = compress ? deflate(plaintext) : plaintext;
 
             EncryptedPacket packetTemplate = new EncryptedPacket(EncryptedPacket.VERSION,
-                    sign ? PacketType.SIGNED_KEM_MESSAGE : PacketType.KEM_MESSAGE,
-                    flags, sender, receiver.owner(), System.currentTimeMillis(), messageId,
-                    (short) 0, (short) 1, AlgorithmSuite.of(kemAlgorithm, signatureAlgorithm, selectedAead),
+                    packetType, flags, sender, receiver, System.currentTimeMillis(), messageId,
+                    (short) 0, (short) 1, sign
+                    ? AlgorithmSuite.of(kemAlgorithm, signatureAlgorithm, selectedAead)
+                    : new AlgorithmSuite(kemAlgorithm.identifier(), "NONE", selectedAead.identifier(),
+                    AlgorithmSuite.HKDF_SHA256),
                     nonce, encapsulation, new byte[0], new byte[0]);
 
             byte[] ciphertext = aeadEncrypt(selectedAead, derivedKey, nonce, packetCodec.aadFor(packetTemplate), payload);
@@ -190,7 +208,8 @@ public final class CryptoService {
 
             EncryptedPacket packetTemplate = new EncryptedPacket(EncryptedPacket.VERSION, PacketType.SESSION_MESSAGE,
                     flags, sender, receiver, System.currentTimeMillis(), messageId, (short) 0, (short) 1,
-                    AlgorithmSuite.of(kemAlgorithm, signatureAlgorithm, selectedAead), nonce, new byte[0],
+                    new AlgorithmSuite("NONE", sign ? signatureAlgorithm.identifier() : "NONE",
+                            selectedAead.identifier(), AlgorithmSuite.HKDF_SHA256), nonce, new byte[0],
                     new byte[0], new byte[0]);
 
             byte[] ciphertext = aeadEncrypt(selectedAead, derivedKey, nonce, packetCodec.aadFor(packetTemplate), payload);
@@ -217,12 +236,44 @@ public final class CryptoService {
         }
         KemAlgorithm packetKem = kemAlgorithm(packet.algorithms().kem());
         requireSameAlgorithm("KEM", packetKem.identifier(), kemAlgorithm(receiverKeys.kemPrivateKey()).identifier());
-        SignatureAlgorithm packetSignature = signatureAlgorithm(packet.algorithms().signature());
-        AeadAlgorithm packetAead = aeadAlgorithm(packet.algorithms().aead());
-        validateHkdf(packet.algorithms().hkdf());
         try {
             PrivateKey privateKey = decodePrivateKey(packetKem.jcaName(), packetKem.provider(),
                     receiverKeys.kemPrivateKey().keyData());
+            return decryptKemPacket(packet, receiverKeys.kemPublicKey().owner(), packetKem, privateKey, claimedSender);
+        } catch (GeneralSecurityException | IllegalArgumentException e) {
+            throw new CryptoException("Unable to decrypt message", e);
+        }
+    }
+
+    public String decryptSessionExchangeResponse(EncryptedPacket packet, String receiver,
+                                                 EphemeralKemKeyPair ephemeralKeyPair,
+                                                 PublicIdentity claimedSender) throws CryptoException {
+        validateProtocol(packet);
+        if (packet.type() != PacketType.SESSION_EXCHANGE
+                || (packet.flags() & FLAG_SESSION_RESPONSE) == 0) {
+            throw new CryptoException("Packet is not a session exchange response");
+        }
+        KemAlgorithm packetKem = kemAlgorithm(packet.algorithms().kem());
+        requireSameAlgorithm("ephemeral KEM", packetKem.identifier(), ephemeralKeyPair.algorithm().identifier());
+        try {
+            PrivateKey privateKey = KeyFactory.getInstance(packetKem.jcaName(), packetKem.provider())
+                    .generatePrivate(new PKCS8EncodedKeySpec(ephemeralKeyPair.privateKey()));
+            return decryptKemPacket(packet, receiver, packetKem, privateKey, claimedSender);
+        } catch (GeneralSecurityException | IllegalArgumentException e) {
+            throw new CryptoException("Unable to decrypt session exchange response", e);
+        }
+    }
+
+    private String decryptKemPacket(EncryptedPacket packet, String receiver, KemAlgorithm packetKem,
+                                    PrivateKey privateKey, PublicIdentity claimedSender) throws CryptoException {
+        if (!packet.receiver().equalsIgnoreCase(receiver)) {
+            throw new CryptoException("Packet receiver mismatch: expected " + receiver + ", got " + packet.receiver());
+        }
+        SignatureAlgorithm packetSignature = packet.signed()
+                ? signatureAlgorithm(packet.algorithms().signature()) : null;
+        AeadAlgorithm packetAead = aeadAlgorithm(packet.algorithms().aead());
+        validateHkdf(packet.algorithms().hkdf());
+        try {
             KeyGenerator keyGenerator = KeyGenerator.getInstance(packetKem.jcaName(), packetKem.provider());
             keyGenerator.init(new KEMExtractSpec.Builder(privateKey, packet.kemCiphertext(), "AES",
                     AEAD_KEY_BYTES * 8).withNoKdf().build());
@@ -257,8 +308,8 @@ public final class CryptoService {
         if (packet.type() != PacketType.SESSION_MESSAGE) {
             throw new CryptoException("Packet is not a session message: " + packet.type());
         }
-        kemAlgorithm(packet.algorithms().kem());
-        SignatureAlgorithm packetSignature = signatureAlgorithm(packet.algorithms().signature());
+        SignatureAlgorithm packetSignature = packet.signed()
+                ? signatureAlgorithm(packet.algorithms().signature()) : null;
         AeadAlgorithm packetAead = aeadAlgorithm(packet.algorithms().aead());
         validateHkdf(packet.algorithms().hkdf());
         try {
@@ -323,14 +374,153 @@ public final class CryptoService {
     public String fingerprint(byte[] encoded) throws CryptoException {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(encoded);
-            return Hex.encode(Arrays.copyOf(digest, 16));
+            return Hex.encode(digest);
         } catch (GeneralSecurityException e) {
             throw new CryptoException("Unable to fingerprint key", e);
         }
     }
 
+    public EphemeralKemKeyPair generateEphemeralKemKeyPair(KemAlgorithm selectedAlgorithm) throws CryptoException {
+        KemAlgorithm algorithm = selectedAlgorithm == null ? KemAlgorithm.ML_KEM_768 : selectedAlgorithm;
+        try {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance(algorithm.jcaName(), algorithm.provider());
+            generator.initialize(algorithm.parameterSpec(), secureRandom);
+            KeyPair pair = generator.generateKeyPair();
+            return new EphemeralKemKeyPair(algorithm, pair.getPublic().getEncoded(), pair.getPrivate().getEncoded());
+        } catch (GeneralSecurityException e) {
+            throw new CryptoException("Unable to generate ephemeral KEM key", e);
+        }
+    }
+
+    public KeyRecord validateEphemeralKemPublicKey(String algorithm, String owner, String uuid, String keyData,
+                                                    Instant createdAt) throws CryptoException {
+        return validatePublicRecord(new KeyRecord(algorithm + "/public", owner, uuid, "", createdAt, keyData),
+                owner, uuid, true);
+    }
+
     public KeyRecord keyRecord(String algorithm, String owner, String uuid, Instant createdAt, byte[] encoded) throws CryptoException {
         return new KeyRecord(algorithm, owner, uuid, fingerprint(encoded), createdAt, Base64Url.encode(encoded));
+    }
+
+    public PublicIdentity validatePublicIdentity(PublicIdentity identity) throws CryptoException {
+        if (identity == null || isBlank(identity.owner()) || isBlank(identity.uuid())) {
+            throw new CryptoException("Public identity owner or UUID is missing");
+        }
+        KeyRecord kem = validatePublicRecord(identity.kemPublicKey(), identity.owner(), identity.uuid(), true);
+        KeyRecord signature = validatePublicRecord(identity.signaturePublicKey(), identity.owner(), identity.uuid(), false);
+        return new PublicIdentity(identity.owner(), identity.uuid(), kem, signature);
+    }
+
+    public LocalKeyMaterial validateLocalKeyMaterial(LocalKeyMaterial material, String owner, String uuid)
+            throws CryptoException {
+        if (material == null || isBlank(owner) || isBlank(uuid)) {
+            throw new CryptoException("Local key identity is missing");
+        }
+        KeyRecord kemPublic = validatePublicRecord(material.kemPublicKey(), owner, uuid, true);
+        KeyRecord kemPrivate = validatePrivateRecord(material.kemPrivateKey(), owner, uuid, true);
+        KeyRecord signaturePublic = validatePublicRecord(material.signaturePublicKey(), owner, uuid, false);
+        KeyRecord signaturePrivate = validatePrivateRecord(material.signaturePrivateKey(), owner, uuid, false);
+        requireSameAlgorithm("KEM", KemAlgorithm.fromIdentifier(kemPublic.algorithm()).identifier(),
+                KemAlgorithm.fromIdentifier(kemPrivate.algorithm()).identifier());
+        requireSameAlgorithm("signature", SignatureAlgorithm.fromIdentifier(signaturePublic.algorithm()).identifier(),
+                SignatureAlgorithm.fromIdentifier(signaturePrivate.algorithm()).identifier());
+        verifyLocalKeyPairs(kemPublic, kemPrivate, signaturePublic, signaturePrivate);
+        return new LocalKeyMaterial(kemPublic, kemPrivate, signaturePublic, signaturePrivate);
+    }
+
+    private KeyRecord validatePublicRecord(KeyRecord record, String owner, String uuid, boolean kem)
+            throws CryptoException {
+        validateRecordIdentity(record, owner, uuid);
+        requireRole(record.algorithm(), "/public");
+        try {
+            String identifier;
+            PublicKey decoded;
+            if (kem) {
+                KemAlgorithm algorithm = KemAlgorithm.fromIdentifier(record.algorithm());
+                identifier = algorithm.identifier();
+                decoded = decodePublicKey(algorithm.jcaName(), algorithm.provider(), record.keyData());
+            } else {
+                SignatureAlgorithm algorithm = SignatureAlgorithm.fromIdentifier(record.algorithm());
+                identifier = algorithm.identifier();
+                decoded = decodePublicKey(algorithm.jcaName(), algorithm.provider(), record.keyData());
+            }
+            return keyRecord(identifier + "/public", owner, uuid, record.createdAt(), decoded.getEncoded());
+        } catch (GeneralSecurityException | IllegalArgumentException e) {
+            throw new CryptoException("Invalid " + (kem ? "KEM" : "signature") + " public key", e);
+        }
+    }
+
+    private KeyRecord validatePrivateRecord(KeyRecord record, String owner, String uuid, boolean kem)
+            throws CryptoException {
+        validateRecordIdentity(record, owner, uuid);
+        requireRole(record.algorithm(), "/private");
+        try {
+            String identifier;
+            PrivateKey decoded;
+            if (kem) {
+                KemAlgorithm algorithm = KemAlgorithm.fromIdentifier(record.algorithm());
+                identifier = algorithm.identifier();
+                decoded = decodePrivateKey(algorithm.jcaName(), algorithm.provider(), record.keyData());
+            } else {
+                SignatureAlgorithm algorithm = SignatureAlgorithm.fromIdentifier(record.algorithm());
+                identifier = algorithm.identifier();
+                decoded = decodePrivateKey(algorithm.jcaName(), algorithm.provider(), record.keyData());
+            }
+            return keyRecord(identifier + "/private", owner, uuid, record.createdAt(), decoded.getEncoded());
+        } catch (GeneralSecurityException | IllegalArgumentException e) {
+            throw new CryptoException("Invalid " + (kem ? "KEM" : "signature") + " private key", e);
+        }
+    }
+
+    private void verifyLocalKeyPairs(KeyRecord kemPublic, KeyRecord kemPrivate, KeyRecord signaturePublic,
+                                     KeyRecord signaturePrivate) throws CryptoException {
+        byte[] challenge = new byte[32];
+        secureRandom.nextBytes(challenge);
+        byte[] signature = sign(signaturePrivate, challenge);
+        if (!verify(signaturePublic, challenge, signature)) {
+            throw new CryptoException("Local signature public and private keys do not match");
+        }
+        KemAlgorithm algorithm = kemAlgorithm(kemPublic);
+        try {
+            PublicKey publicKey = decodePublicKey(algorithm.jcaName(), algorithm.provider(), kemPublic.keyData());
+            PrivateKey privateKey = decodePrivateKey(algorithm.jcaName(), algorithm.provider(), kemPrivate.keyData());
+            KeyGenerator generator = KeyGenerator.getInstance(algorithm.jcaName(), algorithm.provider());
+            generator.init(new KEMGenerateSpec.Builder(publicKey, "AES", AEAD_KEY_BYTES * 8)
+                    .withNoKdf().build(), secureRandom);
+            SecretKeyWithEncapsulation generated = (SecretKeyWithEncapsulation) generator.generateKey();
+            KeyGenerator extractor = KeyGenerator.getInstance(algorithm.jcaName(), algorithm.provider());
+            extractor.init(new KEMExtractSpec.Builder(privateKey, generated.getEncapsulation(), "AES",
+                    AEAD_KEY_BYTES * 8).withNoKdf().build());
+            SecretKeyWithEncapsulation extracted = (SecretKeyWithEncapsulation) extractor.generateKey();
+            if (!MessageDigest.isEqual(generated.getEncoded(), extracted.getEncoded())) {
+                throw new CryptoException("Local KEM public and private keys do not match");
+            }
+        } catch (GeneralSecurityException | IllegalArgumentException e) {
+            throw new CryptoException("Unable to validate local KEM key pair", e);
+        } finally {
+            Arrays.fill(challenge, (byte) 0);
+            Arrays.fill(signature, (byte) 0);
+        }
+    }
+
+    private static void validateRecordIdentity(KeyRecord record, String owner, String uuid) throws CryptoException {
+        if (record == null || isBlank(record.algorithm()) || isBlank(record.owner()) || isBlank(record.uuid())
+                || record.createdAt() == null || isBlank(record.keyData())) {
+            throw new CryptoException("Key record is incomplete");
+        }
+        if (!record.owner().equalsIgnoreCase(owner) || !record.uuid().equalsIgnoreCase(uuid)) {
+            throw new CryptoException("Key record identity does not match its containing identity");
+        }
+    }
+
+    private static void requireRole(String algorithm, String role) throws CryptoException {
+        if (algorithm == null || !algorithm.toLowerCase(java.util.Locale.ROOT).endsWith(role)) {
+            throw new CryptoException("Key algorithm has the wrong role: " + algorithm);
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private static void ensureProviders() {
@@ -356,11 +546,40 @@ public final class CryptoService {
 
     private static void validateProtocol(EncryptedPacket packet) throws CryptoException {
         if (packet.protocolVersion() != EncryptedPacket.LEGACY_VERSION
+                && packet.protocolVersion() != EncryptedPacket.PREVIOUS_VERSION
                 && packet.protocolVersion() != EncryptedPacket.VERSION) {
             throw new CryptoException("Unsupported protocol version: " + Byte.toUnsignedInt(packet.protocolVersion()));
         }
         if (packet.algorithms() == null) {
             throw new CryptoException("Packet algorithm suite is missing");
+        }
+        if (packet.sender() == null || packet.sender().isBlank()
+                || packet.receiver() == null || packet.receiver().isBlank()
+                || packet.messageId() == null || packet.messageId().length != MESSAGE_ID_BYTES
+                || packet.nonce() == null || packet.nonce().length != NONCE_BYTES) {
+            throw new CryptoException("Packet identity, message ID, or nonce is invalid");
+        }
+        byte allowedFlags = (byte) (FLAG_SIGNED | FLAG_COMPRESSED | FLAG_SESSION_RESPONSE);
+        if ((packet.flags() & ~allowedFlags) != 0) {
+            throw new CryptoException("Packet contains unsupported flags");
+        }
+        boolean signedFlag = (packet.flags() & FLAG_SIGNED) != 0;
+        if (signedFlag != packet.signed()) {
+            throw new CryptoException("Packet signed flag and signature field disagree");
+        }
+        if ((packet.type() == PacketType.SIGNED_KEM_MESSAGE || packet.type() == PacketType.SESSION_EXCHANGE)
+                && !signedFlag) {
+            throw new CryptoException("Packet type requires a signature: " + packet.type());
+        }
+        if (packet.type() == PacketType.KEM_MESSAGE && signedFlag) {
+            throw new CryptoException("Unsigned KEM packet type contains a signature");
+        }
+        if ((packet.flags() & FLAG_SESSION_RESPONSE) != 0 && packet.type() != PacketType.SESSION_EXCHANGE) {
+            throw new CryptoException("Session response flag is set on a non-exchange packet");
+        }
+        if (packet.protocolVersion() >= EncryptedPacket.VERSION
+                && (packet.aadFragmentIndex() != 0 || packet.aadFragmentTotal() != 1)) {
+            throw new CryptoException("Protocol v3 does not carry fragment metadata inside encrypted packets");
         }
     }
 

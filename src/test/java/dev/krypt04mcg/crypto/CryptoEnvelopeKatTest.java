@@ -42,11 +42,11 @@ final class CryptoEnvelopeKatTest {
     }
 
     @Test
-    void modifiedAadFailsDecryption() throws Exception {
+    void modifiedAuthenticatedTimestampFailsDecryption() throws Exception {
         EncryptedPacket packet = crypto.encryptFor(publicIdentity(bob), alice, "alice", "aad kat", true, false);
         EncryptedPacket changedAad = new EncryptedPacket(packet.protocolVersion(), packet.type(), packet.flags(),
-                packet.sender(), packet.receiver(), packet.timestampMillis(), packet.messageId(),
-                (short) (packet.aadFragmentIndex() + 1), packet.aadFragmentTotal(), packet.algorithms(),
+                packet.sender(), packet.receiver(), packet.timestampMillis() + 1, packet.messageId(),
+                packet.aadFragmentIndex(), packet.aadFragmentTotal(), packet.algorithms(),
                 packet.nonce(), packet.kemCiphertext(), packet.ciphertext(), packet.signature());
 
         assertThrows(CryptoException.class, () -> crypto.decrypt(changedAad, bob, publicIdentity(alice)));

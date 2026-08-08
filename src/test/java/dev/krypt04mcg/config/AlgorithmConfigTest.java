@@ -19,6 +19,7 @@ final class AlgorithmConfigTest {
         Krypt04McgConfig config = JsonSupport.prettyGson().fromJson(json, Krypt04McgConfig.class);
 
         assertEquals(KemAlgorithm.CMCE_MCELIECE348864, config.kemAlgorithm);
+        assertEquals(KemAlgorithm.ML_KEM_768, config.ephemeralKemAlgorithm);
         assertEquals(SignatureAlgorithm.FALCON_512, config.signatureAlgorithm);
         assertEquals(AeadAlgorithm.AES_256_GCM, config.aeadAlgorithm);
     }

@@ -240,7 +240,8 @@ public final class CommandRegistrar {
         return ClientCommands.literal("showalgs")
                 .executes(ctx -> {
                     feedback(ctx.getSource(), tr("text.krypt04mcg.command.algorithms",
-                            config.kemAlgorithm.identifier(), config.signatureAlgorithm.identifier(),
+                            config.kemAlgorithm.identifier(), config.ephemeralKemAlgorithm.identifier(),
+                            config.signatureAlgorithm.identifier(),
                             config.aeadAlgorithm.identifier()));
                     LocalKeyMaterial local = keyStoreService.local();
                     feedback(ctx.getSource(), tr("text.krypt04mcg.command.active_key_algorithms",
@@ -322,9 +323,9 @@ public final class CommandRegistrar {
                                         .executes(ctx -> {
                                             String player = StringArgumentType.getString(ctx, "player");
                                             try {
-                                                keyStoreService.importPublicIdentity(player,
+                                                PublicIdentity imported = keyStoreService.importPublicIdentity(player,
                                                         StringArgumentType.getString(ctx, "data_or_file"));
-                                                keyTrustService.markTofuTrusted(player);
+                                                keyTrustService.rememberTofu(player, imported);
                                                 feedback(ctx.getSource(),
                                                         tr("text.krypt04mcg.command.key_imported_tofu", player));
                                                 return 1;
@@ -357,7 +358,6 @@ public final class CommandRegistrar {
                                         return 0;
                                     }
                                 })))
-                .then(trustCommand("confirm", keyStoreService, keyTrustService, TrustState.VERIFIED))
                 .then(verifyCommand(keyStoreService, keyTrustService))
                 .then(trustCommand("trust", keyStoreService, keyTrustService, TrustState.TOFU_TRUSTED))
                 .then(trustCommand("distrust", keyStoreService, keyTrustService, TrustState.DISTRUSTED));
@@ -371,23 +371,19 @@ public final class CommandRegistrar {
                         .executes(ctx -> {
                             String player = StringArgumentType.getString(ctx, "player");
                             try {
-                                keyStoreService.findPublicIdentity(player)
+                                PublicIdentity identity = keyStoreService.findPublicIdentity(player)
                                         .orElseThrow(() -> new IllegalStateException(
                                                 tr("text.krypt04mcg.error.no_public_key", player)));
                                 switch (trustState) {
-                                    case VERIFIED -> {
-                                        keyTrustService.markVerified(player);
-                                        feedback(ctx.getSource(), tr("text.krypt04mcg.command.key_confirmed", player));
-                                    }
                                     case TOFU_TRUSTED -> {
-                                        keyTrustService.markTofuTrusted(player);
+                                        keyTrustService.markTofuTrusted(player, identity);
                                         feedback(ctx.getSource(), tr("text.krypt04mcg.command.key_trusted", player));
                                     }
                                     case DISTRUSTED -> {
-                                        keyTrustService.markDistrusted(player);
+                                        keyTrustService.markDistrusted(player, identity);
                                         feedback(ctx.getSource(), tr("text.krypt04mcg.command.key_distrusted", player));
                                     }
-                                    default -> throw new IllegalStateException(
+                                    default -> throw new IllegalArgumentException(
                                             tr("text.krypt04mcg.command.error.unsupported_trust_state", trustState));
                                 }
                                 return 1;
@@ -415,7 +411,7 @@ public final class CommandRegistrar {
                                                     tr("text.krypt04mcg.command.error.fingerprint_mismatch", player));
                                             return 0;
                                         }
-                                        keyTrustService.markVerified(player);
+                                        keyTrustService.markVerified(player, identity);
                                         feedback(ctx.getSource(), tr("text.krypt04mcg.command.key_verified", player));
                                         return 1;
                                     } catch (Exception e) {
@@ -431,7 +427,7 @@ public final class CommandRegistrar {
         try {
             Optional<PublicIdentity> identity = keyStoreService.findPublicIdentity(player);
             Optional<SessionRecord> session = sessionService.find(player);
-            TrustState trustState = keyTrustService.trustState(player, identity.isPresent());
+            TrustState trustState = keyTrustService.trustState(player, identity.orElse(null));
             String keyStatus = identity.map(value -> tr("text.krypt04mcg.status.key_imported", trustStateLabel(trustState)))
                     .orElse(tr("text.krypt04mcg.status.key_not_imported"));
             String signatureStatus = identity.map(value -> value.signaturePublicKey() == null
@@ -458,7 +454,8 @@ public final class CommandRegistrar {
             feedback(source, tr("text.krypt04mcg.status.session", sessionStatus));
             feedback(source, tr("text.krypt04mcg.status.last_decrypt", lastDecrypt));
             feedback(source, tr("text.krypt04mcg.status.algorithms",
-                    config.kemAlgorithm.identifier(), config.signatureAlgorithm.identifier(),
+                    config.kemAlgorithm.identifier(), config.ephemeralKemAlgorithm.identifier(),
+                    config.signatureAlgorithm.identifier(),
                     config.aeadAlgorithm.identifier()));
         } catch (Exception e) {
             error(source, e);

@@ -10,18 +10,19 @@ import dev.krypt04mcg.model.LocalKeyMaterial;
 import dev.krypt04mcg.model.PublicIdentity;
 import dev.krypt04mcg.util.Base64Url;
 import dev.krypt04mcg.util.JsonSupport;
+import dev.krypt04mcg.util.SecureFiles;
+import dev.krypt04mcg.util.SensitiveFileStore;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,12 +31,14 @@ public final class KeyStoreService {
     private final Path keysDir;
     private final Gson gson = JsonSupport.prettyGson();
     private final CryptoService cryptoService;
+    private final SensitiveFileStore sensitiveFiles;
     private LocalKeyMaterial local;
 
     public KeyStoreService(Path root, CryptoService cryptoService) {
         this.root = root;
         this.keysDir = root.resolve("keys");
         this.cryptoService = cryptoService;
+        this.sensitiveFiles = new SensitiveFileStore(root);
     }
 
     public void init(String owner, String uuid) throws IOException, CryptoException {
@@ -44,18 +47,23 @@ public final class KeyStoreService {
 
     public void init(String owner, String uuid, KemAlgorithm kemAlgorithm, SignatureAlgorithm signatureAlgorithm)
             throws IOException, CryptoException {
-        Files.createDirectories(keysDir.resolve("private"));
-        Files.createDirectories(keysDir.resolve("public"));
-        Files.createDirectories(root.resolve("sessions"));
-        Files.createDirectories(root.resolve("cache"));
+        SecureFiles.createPrivateDirectories(keysDir.resolve("private"));
+        SecureFiles.createPrivateDirectories(keysDir.resolve("public"));
+        SecureFiles.createPrivateDirectories(root.resolve("sessions"));
+        SecureFiles.createPrivateDirectories(root.resolve("cache"));
         Path localFile = keysDir.resolve("private").resolve("local.json");
+        String stableUuid = uuid == null || uuid.isBlank()
+                ? UUID.nameUUIDFromBytes(("OfflinePlayer:" + owner).getBytes(StandardCharsets.UTF_8)).toString()
+                : uuid;
         if (Files.exists(localFile)) {
-            local = read(localFile, LocalKeyMaterial.class);
+            LocalKeyMaterial loaded = gson.fromJson(sensitiveFiles.readString(localFile), LocalKeyMaterial.class);
+            local = cryptoService.validateLocalKeyMaterial(loaded, owner, stableUuid);
+            writeLocal(localFile, local);
+            exportOwnPublicFile();
             return;
         }
-        String stableUuid = uuid == null || uuid.isBlank() ? UUID.randomUUID().toString() : uuid;
         local = cryptoService.generateLocalKeys(owner, stableUuid, kemAlgorithm, signatureAlgorithm);
-        write(localFile, local);
+        writeLocal(localFile, local);
         exportOwnPublicFile();
     }
 
@@ -76,7 +84,6 @@ public final class KeyStoreService {
         PublicIdentity identity = ownPublicIdentity();
         write(keysDir.resolve("public").resolve("self-public.json"), identity);
         Path exportDir = root.resolve("export");
-        Files.createDirectories(exportDir);
         Path exportFile = exportDir.resolve("self-public.json");
         write(exportFile, identity);
         return new PublicKeyExport(exportFile.toAbsolutePath().normalize(), identity);
@@ -94,7 +101,7 @@ public final class KeyStoreService {
         LocalKeyMaterial current = local();
         LocalKeyMaterial regenerated = cryptoService.generateLocalKeys(current.kemPublicKey().owner(),
                 current.kemPublicKey().uuid(), kemAlgorithm, signatureAlgorithm);
-        write(keysDir.resolve("private").resolve("local.json"), regenerated);
+        writeLocal(keysDir.resolve("private").resolve("local.json"), regenerated);
         local = regenerated;
         exportOwnPublicFile();
         return regenerated;
@@ -109,7 +116,7 @@ public final class KeyStoreService {
         String normalized = normalize(player);
         Path path = keysDir.resolve("public").resolve(normalized + ".json");
         if (Files.exists(path)) {
-            PublicIdentity existing = read(path, PublicIdentity.class);
+            PublicIdentity existing = readPublicIdentity(path);
             if (!sameIdentity(existing, incoming)) {
                 throw new IOException("TOFU violation: public key for " + player + " changed; refusing to overwrite");
             }
@@ -130,14 +137,14 @@ public final class KeyStoreService {
     public Optional<PublicIdentity> findPublicIdentity(String player) throws IOException {
         Path path = keysDir.resolve("public").resolve(normalize(player) + ".json");
         if (Files.exists(path)) {
-            return Optional.of(read(path, PublicIdentity.class));
+            return Optional.of(readPublicIdentity(path));
         }
         if (!Files.exists(keysDir.resolve("public"))) {
             return Optional.empty();
         }
         try (var stream = Files.list(keysDir.resolve("public"))) {
             for (Path candidate : stream.filter(p -> p.toString().endsWith(".json")).toList()) {
-                PublicIdentity identity = read(candidate, PublicIdentity.class);
+                PublicIdentity identity = readPublicIdentity(candidate);
                 if (identity != null && identity.owner() != null && identity.owner().equalsIgnoreCase(player)) {
                     return Optional.of(identity);
                 }
@@ -153,7 +160,7 @@ public final class KeyStoreService {
         }
         try (var stream = Files.list(keysDir.resolve("public"))) {
             for (Path path : stream.filter(p -> p.toString().endsWith(".json")).toList()) {
-                result.add(read(path, PublicIdentity.class));
+                result.add(readPublicIdentity(path));
             }
         }
         return result;
@@ -219,11 +226,11 @@ public final class KeyStoreService {
     }
 
     private PublicIdentity parsePublicIdentity(String json) throws IOException {
-        PublicIdentity incoming = gson.fromJson(json, PublicIdentity.class);
-        if (incoming == null || incoming.kemPublicKey() == null || incoming.signaturePublicKey() == null) {
-            throw new IOException("Imported public key data is incomplete");
+        try {
+            return cryptoService.validatePublicIdentity(gson.fromJson(json, PublicIdentity.class));
+        } catch (CryptoException | RuntimeException e) {
+            throw new IOException("Imported public key data is invalid", e);
         }
-        return incoming;
     }
 
     private static boolean sameIdentity(PublicIdentity first, PublicIdentity second) {
@@ -231,23 +238,16 @@ public final class KeyStoreService {
                 && first.signaturePublicKey().fingerprint().equals(second.signaturePublicKey().fingerprint());
     }
 
-    private <T> T read(Path path, Class<T> type) throws IOException {
-        return gson.fromJson(Files.readString(path, StandardCharsets.UTF_8), type);
+    private PublicIdentity readPublicIdentity(Path path) throws IOException {
+        return parsePublicIdentity(Files.readString(path, StandardCharsets.UTF_8));
+    }
+
+    private void writeLocal(Path path, LocalKeyMaterial value) throws IOException {
+        sensitiveFiles.writeString(path, gson.toJson(value));
     }
 
     private void write(Path path, Object value) throws IOException {
-        Files.createDirectories(path.getParent());
-        Path temporary = Files.createTempFile(path.getParent(), path.getFileName().toString(), ".tmp");
-        try {
-            Files.writeString(temporary, gson.toJson(value), StandardCharsets.UTF_8);
-            try {
-                Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } finally {
-            Files.deleteIfExists(temporary);
-        }
+        SecureFiles.atomicWrite(path, gson.toJson(value).getBytes(StandardCharsets.UTF_8));
     }
 
     private static boolean fingerprintMatches(String expected, String supplied) {
@@ -260,7 +260,7 @@ public final class KeyStoreService {
     }
 
     private static String normalize(String player) {
-        return player.toLowerCase().replaceAll("[^a-z0-9_.-]", "_");
+        return player.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_");
     }
 
     public record PublicKeyExport(Path path, PublicIdentity identity) {

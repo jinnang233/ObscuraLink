@@ -1,5 +1,6 @@
 package dev.krypt04mcg.chat;
 
+import com.google.gson.Gson;
 import dev.krypt04mcg.client.ClientMessages;
 import dev.krypt04mcg.config.Krypt04McgConfig;
 import dev.krypt04mcg.crypto.CryptoService;
@@ -9,14 +10,17 @@ import dev.krypt04mcg.model.ChatSendFragment;
 import dev.krypt04mcg.model.EncryptedPacket;
 import dev.krypt04mcg.model.PublicIdentity;
 import dev.krypt04mcg.model.SessionRecord;
+import dev.krypt04mcg.model.SessionMessagePayload;
 import dev.krypt04mcg.model.TrustState;
 import dev.krypt04mcg.protocol.PacketCodec;
 import dev.krypt04mcg.service.KeyStoreService;
 import dev.krypt04mcg.service.KeyTrustService;
 import dev.krypt04mcg.service.SentMessageCacheService;
 import dev.krypt04mcg.service.SessionService;
+import dev.krypt04mcg.service.SessionHandshakeService;
 import dev.krypt04mcg.util.Base64Url;
 import dev.krypt04mcg.util.Hex;
+import dev.krypt04mcg.util.JsonSupport;
 
 import java.util.List;
 import java.util.Objects;
@@ -27,21 +31,25 @@ public final class ChatSendService {
     private final KeyStoreService keyStoreService;
     private final KeyTrustService keyTrustService;
     private final SessionService sessionService;
+    private final SessionHandshakeService sessionHandshakeService;
     private final SentMessageCacheService sentMessageCacheService;
     private final CryptoService cryptoService;
     private final PacketCodec packetCodec;
     private final FragmentService fragmentService;
+    private final Gson gson = JsonSupport.prettyGson();
     private Consumer<ChatSendFragment> chatSender;
     private final Consumer<String> system;
 
     public ChatSendService(Krypt04McgConfig config, KeyStoreService keyStoreService, KeyTrustService keyTrustService,
-                           SessionService sessionService, SentMessageCacheService sentMessageCacheService,
+                           SessionService sessionService, SessionHandshakeService sessionHandshakeService,
+                           SentMessageCacheService sentMessageCacheService,
                            CryptoService cryptoService, PacketCodec packetCodec, FragmentService fragmentService,
                            Consumer<ChatSendFragment> chatSender, Consumer<String> system) {
         this.config = config;
         this.keyStoreService = keyStoreService;
         this.keyTrustService = keyTrustService;
         this.sessionService = sessionService;
+        this.sessionHandshakeService = sessionHandshakeService;
         this.sentMessageCacheService = sentMessageCacheService;
         this.cryptoService = cryptoService;
         this.packetCodec = packetCodec;
@@ -76,10 +84,9 @@ public final class ChatSendService {
             PublicIdentity identity = keyStoreService.findPublicIdentity(receiver)
                     .orElseThrow(() -> new IllegalStateException(ClientMessages.tr("text.krypt04mcg.error.no_public_key", receiver)));
             ensureSendAllowed(receiver, identity);
-            SessionRecord record = sessionService.createLocalSession(receiver, identity.kemPublicKey().fingerprint());
-            if (!sendKemMessage(receiver, "/session " + record.sessionId() + " " + record.secret(), true)) {
-                return false;
-            }
+            EncryptedPacket packet = sessionHandshakeService.begin(identity, keyStoreService.local(),
+                    config.ephemeralKemAlgorithm, config.enableCompression, config.aeadAlgorithm);
+            sendPacket(packet, receiver);
             system.accept(ClientMessages.tr("text.krypt04mcg.session_prepared", receiver));
             return true;
         } catch (Exception e) {
@@ -98,11 +105,19 @@ public final class ChatSendService {
             PublicIdentity identity = keyStoreService.findPublicIdentity(receiver)
                     .orElseThrow(() -> new IllegalStateException(ClientMessages.tr("text.krypt04mcg.error.no_public_key", receiver)));
             ensureSendAllowed(receiver, identity);
+            String peerFingerprint = KeyTrustService.fingerprintPair(identity);
+            if (!session.peerFingerprint().equalsIgnoreCase(peerFingerprint)) {
+                throw new IllegalStateException("Session identity binding no longer matches " + receiver);
+            }
+            long sequence = session.nextSendSequence();
+            String payload = gson.toJson(new SessionMessagePayload(SessionMessagePayload.VERSION,
+                    session.sessionId(), sequence, message));
             EncryptedPacket packet = cryptoService.encryptWithSession(identity, keyStoreService.local(),
-                    keyStoreService.local().kemPublicKey().owner(), Base64Url.decode(session.secret()), message,
+                    keyStoreService.local().kemPublicKey().owner(), Base64Url.decode(session.secret()), payload,
                     true, config.enableCompression, config.aeadAlgorithm);
             sendPacket(packet, receiver);
-            sessionService.recordMessage(receiver, message.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+            sessionService.recordSentMessage(receiver, sequence,
+                    message.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
             system.accept(ClientMessages.tr("text.krypt04mcg.sent_encrypted", receiver));
             return true;
         } catch (Exception e) {
@@ -147,7 +162,7 @@ public final class ChatSendService {
         system.accept(ClientMessages.tr("text.krypt04mcg.resending", cached.receiver(), cached.messageId()));
     }
 
-    private void sendPacket(EncryptedPacket packet, String receiver) throws Exception {
+    public void sendPacket(EncryptedPacket packet, String receiver) throws Exception {
         byte[] encoded = packetCodec.encode(packet);
         List<String> fragments = fragmentService.fragment(encoded, packet.messageId(), config.fragmentSize, config.packetPrefix);
         sentMessageCacheService.remember(Hex.encode(packet.messageId()), receiver, fragments);
@@ -169,7 +184,7 @@ public final class ChatSendService {
     }
 
     private void ensureSendAllowed(String receiver, PublicIdentity identity) throws Exception {
-        TrustState trustState = keyTrustService.trustState(receiver, true);
+        TrustState trustState = keyTrustService.trustState(receiver, identity);
         if (trustState == TrustState.DISTRUSTED) {
             throw new IllegalStateException(ClientMessages.tr("text.krypt04mcg.error.distrusted_key", receiver));
         }

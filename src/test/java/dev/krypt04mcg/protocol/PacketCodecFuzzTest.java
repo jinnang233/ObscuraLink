@@ -65,12 +65,26 @@ final class PacketCodecFuzzTest {
     private static EncryptedPacket randomPacket(Random random) {
         PacketType[] types = PacketType.values();
         byte version = random.nextBoolean() ? EncryptedPacket.LEGACY_VERSION : EncryptedPacket.VERSION;
-        return new EncryptedPacket(version, types[random.nextInt(types.length)],
-                (byte) random.nextInt(256), randomName(random), randomName(random), random.nextLong(),
-                randomBytes(random, 16), (short) random.nextInt(Short.MAX_VALUE + 1),
-                (short) (1 + random.nextInt(Short.MAX_VALUE)), randomAlgorithms(random),
+        PacketType type = types[random.nextInt(types.length)];
+        byte flags = (byte) random.nextInt(256);
+        AlgorithmSuite algorithms = randomAlgorithms(random);
+        short fragmentIndex = (short) random.nextInt(Short.MAX_VALUE + 1);
+        short fragmentTotal = (short) (1 + random.nextInt(Short.MAX_VALUE));
+        byte[] signature = randomBytes(random, random.nextInt(129));
+        if (version >= EncryptedPacket.VERSION) {
+            fragmentIndex = 0;
+            fragmentTotal = 1;
+            algorithms = new AlgorithmSuite(type == PacketType.SESSION_MESSAGE ? "NONE" : algorithms.kem(),
+                    (flags & dev.krypt04mcg.crypto.CryptoService.FLAG_SIGNED) == 0 ? "NONE" : algorithms.signature(),
+                    algorithms.aead(), algorithms.hkdf());
+            if ((flags & dev.krypt04mcg.crypto.CryptoService.FLAG_SIGNED) == 0) {
+                signature = new byte[0];
+            }
+        }
+        return new EncryptedPacket(version, type, flags, randomName(random), randomName(random), random.nextLong(),
+                randomBytes(random, 16), fragmentIndex, fragmentTotal, algorithms,
                 randomBytes(random, random.nextInt(33)), randomBytes(random, random.nextInt(257)),
-                randomBytes(random, random.nextInt(513)), randomBytes(random, random.nextInt(129)));
+                randomBytes(random, random.nextInt(513)), signature);
     }
 
     private static byte[] packetWithOversizedSender(Random random) throws IOException {

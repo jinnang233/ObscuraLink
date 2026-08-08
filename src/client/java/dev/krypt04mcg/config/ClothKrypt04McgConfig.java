@@ -11,7 +11,7 @@ public final class ClothKrypt04McgConfig implements ConfigData {
     public boolean verboseMessages = false;
     public boolean enableCompression = true;
     public boolean showReceiveProgress = true;
-    public boolean enableConversationHistory = true;
+    public boolean enableConversationHistory = false;
     public boolean showDisclaimerWarning = true;
 
     @ConfigEntry.BoundedDiscrete(min = 64, max = 200)
@@ -22,6 +22,12 @@ public final class ClothKrypt04McgConfig implements ConfigData {
 
     @ConfigEntry.BoundedDiscrete(min = 5, max = 1440)
     public int sessionTtlMinutes = 60;
+
+    @ConfigEntry.BoundedDiscrete(min = 30, max = 3600)
+    public int maxPacketAgeSeconds = 300;
+
+    @ConfigEntry.BoundedDiscrete(min = 0, max = 300)
+    public int maxFutureSkewSeconds = 60;
 
     @ConfigEntry.BoundedDiscrete(min = 1, max = 10000)
     public int maxMessagesPerSession = 100;
@@ -40,6 +46,7 @@ public final class ClothKrypt04McgConfig implements ConfigData {
     @ConfigEntry.Gui.Excluded
     public String shadowListenRegex = "^<(?<player>[^>]+)>\\s*(?<message>.*)$";
     public KemAlgorithm kemAlgorithm = KemAlgorithm.CMCE_MCELIECE348864;
+    public KemAlgorithm ephemeralKemAlgorithm = KemAlgorithm.ML_KEM_768;
     public SignatureAlgorithm signatureAlgorithm = SignatureAlgorithm.FALCON_512;
     public AeadAlgorithm aeadAlgorithm = AeadAlgorithm.AES_256_GCM;
 
@@ -60,6 +67,8 @@ public final class ClothKrypt04McgConfig implements ConfigData {
         config.fragmentSize = fragmentSize;
         config.sendDelayMs = sendDelayMs;
         config.sessionTtlMinutes = sessionTtlMinutes;
+        config.maxPacketAgeSeconds = maxPacketAgeSeconds;
+        config.maxFutureSkewSeconds = maxFutureSkewSeconds;
         config.maxMessagesPerSession = maxMessagesPerSession;
         config.rotateAfterBytes = rotateAfterBytes;
         config.chatSendMode = chatSendMode;
@@ -73,6 +82,7 @@ public final class ClothKrypt04McgConfig implements ConfigData {
                 shadowListenRegexes == null ? java.util.List.of(shadowListenRegex) : shadowListenRegexes);
         config.shadowListenRegex = shadowListenRegex;
         config.kemAlgorithm = kemAlgorithm == null ? KemAlgorithm.CMCE_MCELIECE348864 : kemAlgorithm;
+        config.ephemeralKemAlgorithm = ephemeralKemAlgorithm == null ? KemAlgorithm.ML_KEM_768 : ephemeralKemAlgorithm;
         config.signatureAlgorithm = signatureAlgorithm == null ? SignatureAlgorithm.FALCON_512 : signatureAlgorithm;
         config.aeadAlgorithm = aeadAlgorithm == null ? AeadAlgorithm.AES_256_GCM : aeadAlgorithm;
     }

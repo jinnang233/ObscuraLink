@@ -1,6 +1,7 @@
 package dev.krypt04mcg.chat;
 
 import dev.krypt04mcg.config.Krypt04McgConfig;
+import dev.krypt04mcg.config.KemAlgorithm;
 import dev.krypt04mcg.crypto.CryptoService;
 import dev.krypt04mcg.fragment.FragmentReassembler;
 import dev.krypt04mcg.fragment.FragmentService;
@@ -10,7 +11,9 @@ import dev.krypt04mcg.model.PublicIdentity;
 import dev.krypt04mcg.protocol.PacketCodec;
 import dev.krypt04mcg.service.DecryptionHistoryService;
 import dev.krypt04mcg.service.KeyStoreService;
+import dev.krypt04mcg.service.KeyTrustService;
 import dev.krypt04mcg.service.SessionService;
+import dev.krypt04mcg.service.SessionHandshakeService;
 import dev.krypt04mcg.util.Base64Url;
 import dev.krypt04mcg.util.JsonSupport;
 import org.junit.jupiter.api.Test;
@@ -24,6 +27,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 final class HandshakeStateMachineTest {
     @TempDir
@@ -32,11 +36,10 @@ final class HandshakeStateMachineTest {
     @Test
     void signedSessionHandshakeAcceptsOnceAndRejectsReplay() throws Exception {
         Fixture fixture = fixture();
-        byte[] sessionId = randomBytes(16);
-        byte[] secret = randomBytes(32);
-        EncryptedPacket packet = fixture.crypto.encryptFor(fixture.bobKeys.ownPublicIdentity(),
-                fixture.aliceMaterial, "alice",
-                "/session " + Base64Url.encode(sessionId) + " " + Base64Url.encode(secret), true, false);
+        SessionService aliceSessions = new SessionService(tempDir.resolve("alice"));
+        SessionHandshakeService aliceHandshake = new SessionHandshakeService(fixture.crypto, aliceSessions);
+        EncryptedPacket packet = aliceHandshake.begin(fixture.bobKeys.ownPublicIdentity(), fixture.aliceMaterial,
+                KemAlgorithm.ML_KEM_768, false, dev.krypt04mcg.config.AeadAlgorithm.AES_256_GCM);
         List<String> fragments = fixture.fragments.fragment(fixture.codec.encode(packet), packet.messageId(), 96);
 
         for (String fragment : fragments) {
@@ -44,6 +47,19 @@ final class HandshakeStateMachineTest {
         }
 
         assertTrue(fixture.sessionService.find("alice").isPresent());
+        assertEquals(1, fixture.responses.size());
+        EncryptedPacket response = fixture.responses.getFirst();
+        assertEquals("ML-KEM-768", response.algorithms().kem());
+        assertThrows(Exception.class, () -> fixture.crypto.decrypt(response, fixture.aliceMaterial,
+                fixture.bobKeys.ownPublicIdentity()));
+        SessionHandshakeService.DecryptedExchange decrypted = aliceHandshake.decrypt(response,
+                fixture.aliceMaterial, fixture.bobKeys.ownPublicIdentity());
+        aliceHandshake.complete(response, decrypted, fixture.bobKeys.ownPublicIdentity(), fixture.aliceMaterial,
+                false, dev.krypt04mcg.config.AeadAlgorithm.AES_256_GCM, (ignored, receiver) -> {
+                    throw new AssertionError("Response completion must not send another packet");
+                });
+        assertEquals(fixture.sessionService.find("alice").orElseThrow().secret(),
+                aliceSessions.find("bob").orElseThrow().secret());
         assertTrue(!fixture.history.recordAcceptedPacket("alice", packet.messageId(), packet.nonce()));
 
         for (String fragment : fragments) {
@@ -51,6 +67,7 @@ final class HandshakeStateMachineTest {
         }
 
         assertTrue(fixture.decryptedMessages.isEmpty());
+        assertEquals(1, fixture.responses.size());
     }
 
     @Test
@@ -86,6 +103,31 @@ final class HandshakeStateMachineTest {
     }
 
     @Test
+    void distrustedAndTransportSenderMismatchedPacketsAreRejectedBeforeDisplay() throws Exception {
+        Fixture fixture = fixture();
+        PublicIdentity alice = publicIdentity(fixture.aliceMaterial);
+        EncryptedPacket packet = fixture.crypto.encryptFor(fixture.bobKeys.ownPublicIdentity(),
+                fixture.aliceMaterial, "alice", "must not display", true, false);
+        List<String> fragments = fixture.fragments.fragment(fixture.codec.encode(packet), packet.messageId(), 96);
+
+        fixture.trust.markDistrusted("alice", alice);
+        for (String fragment : fragments) {
+            fixture.handler.handle("alice", fragment);
+        }
+        assertTrue(fixture.decryptedMessages.isEmpty());
+
+        Fixture mismatchFixture = fixture();
+        mismatchFixture.trust.markTofuTrusted("alice", publicIdentity(mismatchFixture.aliceMaterial));
+        EncryptedPacket mismatched = mismatchFixture.crypto.encryptFor(mismatchFixture.bobKeys.ownPublicIdentity(),
+                mismatchFixture.aliceMaterial, "alice", "also blocked", true, false);
+        for (String fragment : mismatchFixture.fragments.fragment(mismatchFixture.codec.encode(mismatched),
+                mismatched.messageId(), 96)) {
+            mismatchFixture.handler.handle("mallory", fragment);
+        }
+        assertTrue(mismatchFixture.decryptedMessages.isEmpty());
+    }
+
+    @Test
     void decryptionHistoryRejectsDuplicateMessageIdOrNonce() throws Exception {
         DecryptionHistoryService history = new DecryptionHistoryService(tempDir);
         byte[] messageId = randomBytes(16);
@@ -95,6 +137,42 @@ final class HandshakeStateMachineTest {
         assertTrue(!history.recordAcceptedPacket("alice", messageId, randomBytes(12)));
         assertTrue(!history.recordAcceptedPacket("alice", randomBytes(16), nonce));
         assertTrue(history.recordAcceptedPacket("bob", messageId, nonce));
+    }
+
+    @Test
+    void simultaneousExchangesConvergeOnOneSession() throws Exception {
+        CryptoService crypto = new CryptoService();
+        LocalKeyMaterial alice = crypto.generateLocalKeys("alice", "alice-uuid");
+        LocalKeyMaterial bob = crypto.generateLocalKeys("bob", "bob-uuid");
+        PublicIdentity aliceIdentity = publicIdentity(alice);
+        PublicIdentity bobIdentity = publicIdentity(bob);
+        SessionService aliceSessions = new SessionService(tempDir.resolve("simultaneous-alice"));
+        SessionService bobSessions = new SessionService(tempDir.resolve("simultaneous-bob"));
+        SessionHandshakeService aliceHandshake = new SessionHandshakeService(crypto, aliceSessions);
+        SessionHandshakeService bobHandshake = new SessionHandshakeService(crypto, bobSessions);
+        EncryptedPacket aliceRequest = aliceHandshake.begin(bobIdentity, alice, KemAlgorithm.ML_KEM_768,
+                false, dev.krypt04mcg.config.AeadAlgorithm.AES_256_GCM);
+        EncryptedPacket bobRequest = bobHandshake.begin(aliceIdentity, bob, KemAlgorithm.ML_KEM_768,
+                false, dev.krypt04mcg.config.AeadAlgorithm.AES_256_GCM);
+
+        SessionHandshakeService.DecryptedExchange atAlice = aliceHandshake.decrypt(bobRequest, alice, bobIdentity);
+        assertTrue(!aliceHandshake.complete(bobRequest, atAlice, bobIdentity, alice, false,
+                dev.krypt04mcg.config.AeadAlgorithm.AES_256_GCM, (packet, receiver) -> {
+                }));
+
+        List<EncryptedPacket> responses = new ArrayList<>();
+        SessionHandshakeService.DecryptedExchange atBob = bobHandshake.decrypt(aliceRequest, bob, aliceIdentity);
+        assertTrue(bobHandshake.complete(aliceRequest, atBob, aliceIdentity, bob, false,
+                dev.krypt04mcg.config.AeadAlgorithm.AES_256_GCM,
+                (packet, receiver) -> responses.add(packet)));
+        SessionHandshakeService.DecryptedExchange response = aliceHandshake.decrypt(responses.getFirst(),
+                alice, bobIdentity);
+        assertTrue(aliceHandshake.complete(responses.getFirst(), response, bobIdentity, alice, false,
+                dev.krypt04mcg.config.AeadAlgorithm.AES_256_GCM, (packet, receiver) -> {
+                }));
+
+        assertEquals(aliceSessions.find("bob").orElseThrow().secret(),
+                bobSessions.find("alice").orElseThrow().secret());
     }
 
     private Fixture fixture() throws Exception {
@@ -110,10 +188,15 @@ final class HandshakeStateMachineTest {
         List<String> systemMessages = new ArrayList<>();
         List<String> decryptedMessages = new ArrayList<>();
         DecryptionHistoryService history = new DecryptionHistoryService(tempDir.resolve("bob"));
-        ChatReceiveHandler handler = new ChatReceiveHandler(new Krypt04McgConfig(), bobKeys, crypto, codec, fragments,
-                new FragmentReassembler(), history, sessionService,
+        KeyTrustService trust = new KeyTrustService(tempDir.resolve("bob"));
+        SessionHandshakeService handshake = new SessionHandshakeService(crypto, sessionService);
+        List<EncryptedPacket> responses = new ArrayList<>();
+        ChatReceiveHandler handler = new ChatReceiveHandler(new Krypt04McgConfig(), bobKeys, trust, crypto,
+                codec, fragments, new FragmentReassembler(), history, sessionService, handshake,
+                (packet, receiver) -> responses.add(packet),
                 systemMessages::add, (player, message) -> decryptedMessages.add(message));
-        return new Fixture(crypto, bobKeys, alice, codec, fragments, sessionService, history, systemMessages, decryptedMessages, handler);
+        return new Fixture(crypto, bobKeys, alice, codec, fragments, sessionService, history, trust, systemMessages,
+                decryptedMessages, responses, handler);
     }
 
     private static PublicIdentity publicIdentity(LocalKeyMaterial material) {
@@ -129,7 +212,8 @@ final class HandshakeStateMachineTest {
 
     private record Fixture(CryptoService crypto, KeyStoreService bobKeys, LocalKeyMaterial aliceMaterial,
                            PacketCodec codec, FragmentService fragments, SessionService sessionService,
-                           DecryptionHistoryService history, List<String> systemMessages,
-                           List<String> decryptedMessages, ChatReceiveHandler handler) {
+                           DecryptionHistoryService history, KeyTrustService trust, List<String> systemMessages,
+                           List<String> decryptedMessages, List<EncryptedPacket> responses,
+                           ChatReceiveHandler handler) {
     }
 }
