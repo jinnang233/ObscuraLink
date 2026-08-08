@@ -14,6 +14,7 @@ import dev.krypt04mcg.fragment.FragmentService;
 import dev.krypt04mcg.gui.Krypt04McgChatScreen;
 import dev.krypt04mcg.input.Krypt04McgKeyBindings;
 import dev.krypt04mcg.model.ChatSendFragment;
+import dev.krypt04mcg.protocol.ChatFragmentPayload;
 import dev.krypt04mcg.protocol.PacketCodec;
 import dev.krypt04mcg.service.DecryptionHistoryService;
 import dev.krypt04mcg.service.GroupService;
@@ -24,6 +25,8 @@ import dev.krypt04mcg.service.SessionService;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.ChatFormatting;
@@ -95,6 +98,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
         OptionalClothConfig.registerSaveListener(updated -> applyChatSender());
         chatReceiveHandler = new ChatReceiveHandler(config, keyStoreService, cryptoService, packetCodec, fragmentService,
                 reassembler, decryptionHistoryService, sessionService, this::system, conversationStore::incoming);
+        registerCustomPayloadNetworking();
 
         CommandRegistrar.register(chatSendService, keyStoreService, keyTrustService, sessionService, decryptionHistoryService,
                 groupService, config);
@@ -156,9 +160,31 @@ public final class Krypt04McgMod implements ClientModInitializer {
         }
         if (config.chatSendMode == ChatSendMode.SERVER_COMMAND) {
             chatSendService.setChatSender(this::sendServerCommand);
+        } else if (config.chatSendMode == ChatSendMode.CUSTOM_PAYLOAD) {
+            chatSendService.setChatSender(this::sendCustomPayload);
         } else {
             chatSendService.setChatSender(this::sendChatLine);
         }
+    }
+
+    private void sendCustomPayload(ChatSendFragment chatSendFragment) {
+        String fragment = chatSendFragment.fragment();
+        if (!fragmentService.isFragment(fragment, config.packetPrefix)) {
+            LOGGER.warn("Refusing to send non-Krypt04Mcg payload fragment");
+            return;
+        }
+        if (ClientPlayNetworking.canSend(ChatFragmentPayload.TYPE)) {
+            ClientPlayNetworking.send(new ChatFragmentPayload(chatSendFragment.receiver(), fragment, chatSendFragment.version()));
+        } else if (config.verboseMessages) {
+            system("Krypt04Mcg payload channel is not available on this server: " + ChatFragmentPayload.CHANNEL);
+        }
+    }
+
+    private void registerCustomPayloadNetworking() {
+        PayloadTypeRegistry.serverboundPlay().register(ChatFragmentPayload.TYPE, ChatFragmentPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(ChatFragmentPayload.TYPE, ChatFragmentPayload.CODEC);
+        ClientPlayNetworking.registerGlobalReceiver(ChatFragmentPayload.TYPE, (payload, context) ->
+                chatReceiveHandler.handle(payload.receiver(), payload.fragment()));
     }
 
     static String formatServerCommand(String template, ChatSendFragment fragment) {

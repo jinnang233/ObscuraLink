@@ -16,6 +16,7 @@
   "text.autoconfig.krypt04mcg.option.chatSendMode": "전송 방식",
   "text.autoconfig.krypt04mcg.option.chatSendMode.CHAT": "채팅",
   "text.autoconfig.krypt04mcg.option.chatSendMode.SERVER_COMMAND": "서버 명령",
+  "text.autoconfig.krypt04mcg.option.chatSendMode.CUSTOM_PAYLOAD": "사용자 지정 페이로드 채널",
   "text.autoconfig.krypt04mcg.option.serverCommandTemplate": "서버 명령 템플릿",
   "text.autoconfig.krypt04mcg.option.packetPrefix": "패킷 접두사",
   "text.autoconfig.krypt04mcg.option.receiveRegexMode": "정규식 수신 모드",

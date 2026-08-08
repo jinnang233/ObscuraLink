@@ -212,6 +212,24 @@ Each chat fragment has this form:
 
 The receiver supports out-of-order fragments, ignores duplicate fragments, cleans up timed-out partial messages, caps pending messages, and rejects excessive fragment counts.
 
+## Optional Payload Channel
+
+Krypt04Mcg remains a client-side mod. Servers do not need to install any plugin or mod for the default chat transport, and the optional payload channel is not used for mandatory login or configuration negotiation.
+
+If a server plugin wants to relay fragments without normal chat, it can declare support for this play-stage custom payload channel:
+
+```text
+channel id: krypt04mcg:chat_fragment
+direction C2S: client -> server
+direction S2C: server -> client
+payload fields:
+  string receiver
+  string fragment
+  varint version
+```
+
+Client send mode `CUSTOM_PAYLOAD` only sends on this channel when Fabric reports the connected server can receive `krypt04mcg:chat_fragment`; otherwise the client simply skips payload sending and does not require server-side support.
+
 ## Session Design
 
 `/enc exchange` creates and persists local session material, then sends the session data inside a signed encrypted KEM envelope. `/enc etell` currently uses the same signed KEM envelope while keeping the session API and storage in place. The protocol already reserves packet types for direct PSK session packets.

@@ -16,6 +16,7 @@
   "text.autoconfig.krypt04mcg.option.chatSendMode": "送信方法",
   "text.autoconfig.krypt04mcg.option.chatSendMode.CHAT": "チャット",
   "text.autoconfig.krypt04mcg.option.chatSendMode.SERVER_COMMAND": "サーバーコマンド",
+  "text.autoconfig.krypt04mcg.option.chatSendMode.CUSTOM_PAYLOAD": "カスタムペイロードチャンネル",
   "text.autoconfig.krypt04mcg.option.serverCommandTemplate": "サーバーコマンドテンプレート",
   "text.autoconfig.krypt04mcg.option.packetPrefix": "パケット接頭辞",
   "text.autoconfig.krypt04mcg.option.receiveRegexMode": "正規表現受信モード",

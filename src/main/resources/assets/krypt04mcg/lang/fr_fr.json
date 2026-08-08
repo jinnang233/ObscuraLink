@@ -16,6 +16,7 @@
   "text.autoconfig.krypt04mcg.option.chatSendMode": "Méthode d’envoi",
   "text.autoconfig.krypt04mcg.option.chatSendMode.CHAT": "Chat",
   "text.autoconfig.krypt04mcg.option.chatSendMode.SERVER_COMMAND": "Commande serveur",
+  "text.autoconfig.krypt04mcg.option.chatSendMode.CUSTOM_PAYLOAD": "Canal de charge utile personnalisée",
   "text.autoconfig.krypt04mcg.option.serverCommandTemplate": "Modèle de commande serveur",
   "text.autoconfig.krypt04mcg.option.packetPrefix": "Préfixe de paquet",
   "text.autoconfig.krypt04mcg.option.receiveRegexMode": "Regex Receive Mode",

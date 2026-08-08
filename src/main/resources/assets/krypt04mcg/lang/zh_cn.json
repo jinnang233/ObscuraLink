@@ -16,6 +16,7 @@
   "text.autoconfig.krypt04mcg.option.chatSendMode": "发送方式",
   "text.autoconfig.krypt04mcg.option.chatSendMode.CHAT": "聊天",
   "text.autoconfig.krypt04mcg.option.chatSendMode.SERVER_COMMAND": "服务器命令",
+  "text.autoconfig.krypt04mcg.option.chatSendMode.CUSTOM_PAYLOAD": "自定义载荷信道",
   "text.autoconfig.krypt04mcg.option.serverCommandTemplate": "服务器命令模板",
   "text.autoconfig.krypt04mcg.option.packetPrefix": "消息包前缀",
   "text.autoconfig.krypt04mcg.option.receiveRegexMode": "启用正则接收模式",
