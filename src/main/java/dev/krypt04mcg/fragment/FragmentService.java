@@ -6,11 +6,15 @@ import dev.krypt04mcg.util.Hex;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public final class FragmentService {
     public static final String PREFIX = "[KRYPT04MCG]";
     public static final int MAX_CHAT_MESSAGE_LENGTH = 256;
     private static final int MIN_PAYLOAD_SIZE = 32;
+    private static final Pattern UNPREFIXED_FRAGMENT_PATTERN =
+            Pattern.compile("(?<![0-9A-Fa-f])([0-9A-Fa-f]{32}\\s+\\d+\\s+\\d+\\s+[A-Za-z0-9_-]+)");
 
     public List<String> fragment(byte[] packetBytes, byte[] messageId, int configuredPayloadSize) {
         return fragment(packetBytes, messageId, configuredPayloadSize, PREFIX);
@@ -47,13 +51,13 @@ public final class FragmentService {
         if (!normalizedPrefix.isEmpty() && !message.startsWith(normalizedPrefix + " ")) {
             return false;
         }
-        String[] parts = parts(message, normalizedPrefix);
-        if (parts.length != 5) {
+        FragmentParts parts = parts(message, normalizedPrefix);
+        if (parts == null) {
             return false;
         }
         try {
-            int index = Integer.parseInt(parts[2]);
-            int total = Integer.parseInt(parts[3]);
+            int index = Integer.parseInt(parts.index());
+            int total = Integer.parseInt(parts.total());
             return index >= 0 && total > 0 && index < total;
         } catch (NumberFormatException e) {
             return false;
@@ -72,16 +76,29 @@ public final class FragmentService {
         if (message.length() > MAX_CHAT_MESSAGE_LENGTH) {
             throw new IllegalArgumentException("Krypt04Mcg fragment exceeds Minecraft chat limit");
         }
-        String[] parts = parts(message, normalizedPrefix);
-        if (parts.length != 5) {
+        FragmentParts parts = parts(message, normalizedPrefix);
+        if (parts == null) {
             throw new IllegalArgumentException("Malformed Krypt04Mcg fragment");
         }
-        int index = Integer.parseInt(parts[2]);
-        int total = Integer.parseInt(parts[3]);
+        int index = Integer.parseInt(parts.index());
+        int total = Integer.parseInt(parts.total());
         if (index < 0 || total <= 0 || index >= total) {
             throw new IllegalArgumentException("Invalid fragment index " + index + "/" + total);
         }
-        return new Fragment(parts[1], index, total, parts[4]);
+        return new Fragment(parts.messageId(), index, total, parts.payload());
+    }
+
+    public String findFragment(String message, String prefix) {
+        if (message == null) {
+            return null;
+        }
+        String normalizedPrefix = normalizePrefix(prefix);
+        if (!normalizedPrefix.isEmpty()) {
+            int index = message.indexOf(normalizedPrefix);
+            return index < 0 ? null : message.substring(index);
+        }
+        Matcher matcher = UNPREFIXED_FRAGMENT_PATTERN.matcher(message);
+        return matcher.find() ? matcher.group(1) : null;
     }
 
     private static int payloadSizeFor(int encodedLength, String id, int configuredPayloadSize, String prefix) {
@@ -107,11 +124,13 @@ public final class FragmentService {
         return MAX_CHAT_MESSAGE_LENGTH - headerLength;
     }
 
-    private static String[] parts(String message, String prefix) {
+    private static FragmentParts parts(String message, String prefix) {
         if (prefix.isEmpty()) {
-            return (" " + message).split(" ", 5);
+            String[] parts = message.split("\\s+", 4);
+            return parts.length == 4 ? new FragmentParts(parts[0], parts[1], parts[2], parts[3]) : null;
         }
-        return message.split(" ", 5);
+        String[] parts = message.split("\\s+", 5);
+        return parts.length == 5 ? new FragmentParts(parts[1], parts[2], parts[3], parts[4]) : null;
     }
 
     private static String headerPrefix(String prefix) {
@@ -124,5 +143,8 @@ public final class FragmentService {
 
     private static int digits(int value) {
         return Integer.toString(value).length();
+    }
+
+    private record FragmentParts(String messageId, String index, String total, String payload) {
     }
 }

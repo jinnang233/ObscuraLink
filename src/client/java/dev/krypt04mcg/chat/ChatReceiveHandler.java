@@ -151,15 +151,9 @@ public final class ChatReceiveHandler {
             return Optional.empty();
         }
         String prefix = config.packetPrefix == null ? FragmentService.PREFIX : config.packetPrefix;
-        String fragment;
-        if (prefix.isEmpty()) {
-            fragment = raw.trim();
-        } else {
-            int index = raw.indexOf(prefix);
-            if (index < 0) {
-                return Optional.empty();
-            }
-            fragment = raw.substring(index);
+        String fragment = fragmentService.findFragment(raw, prefix);
+        if (fragment == null) {
+            return Optional.empty();
         }
         if (!fragmentService.isFragment(fragment, prefix)) {
             return Optional.empty();

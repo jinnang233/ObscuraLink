@@ -76,7 +76,18 @@ final class FragmentServiceTest {
 
         assertTrue(lines.getFirst().startsWith("00000000000000000000000000000000 0 1 "));
         assertTrue(service.isFragment(lines.getFirst(), ""));
-        assertEquals(1, service.parse(lines.getFirst(), "").total());
+        Fragment fragment = service.parse(lines.getFirst(), "");
+        assertEquals("00000000000000000000000000000000", fragment.messageId());
+        assertEquals(0, fragment.index());
+        assertEquals(1, fragment.total());
+    }
+
+    @Test
+    void findsEmptyPrefixFragmentInsideDecoratedChatLine() {
+        FragmentService service = new FragmentService();
+        String fragment = "00000000000000000000000000000000 0 1 AQID";
+
+        assertEquals(fragment, service.findFragment("<alice> " + fragment, ""));
     }
 
     @Test
