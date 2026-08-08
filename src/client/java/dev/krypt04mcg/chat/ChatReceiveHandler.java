@@ -70,7 +70,7 @@ public final class ChatReceiveHandler {
                     system.accept(ClientMessages.tr("text.krypt04mcg.receive_timeout", sender, timeout.received(), timeout.total()));
                 }
             }
-            Fragment fragment = fragmentService.parse(fragmentLine.get());
+            Fragment fragment = fragmentService.parse(fragmentLine.get(), config.packetPrefix);
             fragmentSenders.putIfAbsent(fragment.messageId(), senderName);
             Optional<byte[]> packetBytes = reassembler.accept(fragment);
             if (packetBytes.isEmpty()) {
@@ -150,11 +150,20 @@ public final class ChatReceiveHandler {
         if (raw == null) {
             return Optional.empty();
         }
-        int index = raw.indexOf(FragmentService.PREFIX);
-        if (index < 0) {
+        String prefix = config.packetPrefix == null ? FragmentService.PREFIX : config.packetPrefix;
+        String fragment;
+        if (prefix.isEmpty()) {
+            fragment = raw.trim();
+        } else {
+            int index = raw.indexOf(prefix);
+            if (index < 0) {
+                return Optional.empty();
+            }
+            fragment = raw.substring(index);
+        }
+        if (!fragmentService.isFragment(fragment, prefix)) {
             return Optional.empty();
         }
-        String fragment = raw.substring(index);
         if (config.receiveRegexMode && !Pattern.compile(config.receiveRegex).matcher(fragment).matches()) {
             return Optional.empty();
         }

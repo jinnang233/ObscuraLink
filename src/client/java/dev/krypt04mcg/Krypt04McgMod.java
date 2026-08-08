@@ -49,6 +49,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
     private GroupService groupService;
     private KeyTrustService keyTrustService;
     private SentMessageCacheService sentMessageCacheService;
+    private FragmentService fragmentService;
     private ChatSendService chatSendService;
     private ChatReceiveHandler chatReceiveHandler;
     private ChatConversationStore conversationStore;
@@ -64,7 +65,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
 
         PacketCodec packetCodec = new PacketCodec();
         CryptoService cryptoService = new CryptoService();
-        FragmentService fragmentService = new FragmentService();
+        fragmentService = new FragmentService();
         FragmentReassembler reassembler = new FragmentReassembler();
         Path root = FabricLoader.getInstance().getConfigDir().resolve("krypt04mcg");
         keyStoreService = new KeyStoreService(root, cryptoService);
@@ -124,7 +125,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
     private void sendChatLine(ChatSendFragment chatSendFragment) {
         Minecraft client = Minecraft.getInstance();
         String line = chatSendFragment.fragment();
-        if (!line.startsWith(FragmentService.PREFIX + " ")) {
+        if (!fragmentService.isFragment(line, config.packetPrefix)) {
             LOGGER.warn("Refusing to send non-Krypt04Mcg chat line");
             return;
         }

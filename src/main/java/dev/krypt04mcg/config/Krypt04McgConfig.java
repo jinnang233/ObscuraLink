@@ -18,6 +18,7 @@ public class Krypt04McgConfig {
 
     public long rotateAfterBytes = 1024L * 1024L;
 
+    public String packetPrefix = "[KRYPT04MCG]";
     public boolean receiveRegexMode = false;
     public String receiveRegex = "^\\[KRYPT04MCG\\] .+";
     public boolean shadowListenMode = false;

@@ -60,7 +60,7 @@ final class RceSafetyFuzzTest {
     void minecraftChatSenderKeepsFragmentOnlyGuard() throws Exception {
         String modSource = Files.readString(Path.of("src/client/java/dev/krypt04mcg/Krypt04McgMod.java"));
 
-        assertTrue(modSource.contains("line.startsWith(FragmentService.PREFIX + \" \")"));
+        assertTrue(modSource.contains("fragmentService.isFragment(line, config.packetPrefix)"));
         assertTrue(modSource.contains("sendChat(line)"));
         assertFalse(modSource.contains("sendCommand("));
     }

@@ -36,6 +36,7 @@ final class Krypt04McgConfigFuzzTest {
             assertEquals(config.sessionTtlMinutes, decoded.sessionTtlMinutes);
             assertEquals(config.maxMessagesPerSession, decoded.maxMessagesPerSession);
             assertEquals(config.rotateAfterBytes, decoded.rotateAfterBytes);
+            assertEquals(config.packetPrefix, decoded.packetPrefix);
             assertEquals(config.receiveRegexMode, decoded.receiveRegexMode);
             assertEquals(config.receiveRegex, decoded.receiveRegex);
             assertEquals(config.shadowListenMode, decoded.shadowListenMode);
@@ -84,6 +85,7 @@ final class Krypt04McgConfigFuzzTest {
         config.sessionTtlMinutes = 1 + random.nextInt(3_000);
         config.maxMessagesPerSession = 1 + random.nextInt(20_000);
         config.rotateAfterBytes = Math.abs(random.nextLong());
+        config.packetPrefix = random.nextBoolean() ? "" : randomToken(random);
         config.receiveRegexMode = random.nextBoolean();
         config.receiveRegex = randomRegex(random);
         config.shadowListenMode = random.nextBoolean();

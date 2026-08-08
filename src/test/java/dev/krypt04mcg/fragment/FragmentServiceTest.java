@@ -56,6 +56,30 @@ final class FragmentServiceTest {
     }
 
     @Test
+    void supportsCustomPrefix() {
+        FragmentService service = new FragmentService();
+        byte[] packet = new byte[]{1, 2, 3};
+
+        List<String> lines = service.fragment(packet, fixedId(), 96, "[CUSTOM]");
+
+        assertTrue(lines.getFirst().startsWith("[CUSTOM] "));
+        assertTrue(service.isFragment(lines.getFirst(), "[CUSTOM]"));
+        assertEquals(0, service.parse(lines.getFirst(), "[CUSTOM]").index());
+    }
+
+    @Test
+    void supportsEmptyPrefix() {
+        FragmentService service = new FragmentService();
+        byte[] packet = new byte[]{1, 2, 3};
+
+        List<String> lines = service.fragment(packet, fixedId(), 96, "");
+
+        assertTrue(lines.getFirst().startsWith("00000000000000000000000000000000 0 1 "));
+        assertTrue(service.isFragment(lines.getFirst(), ""));
+        assertEquals(1, service.parse(lines.getFirst(), "").total());
+    }
+
+    @Test
     void cleanupRemovesTimedOutMessages() {
         MutableClock clock = new MutableClock();
         FragmentReassembler reassembler = new FragmentReassembler(clock, Duration.ofSeconds(1), 10, 10);

@@ -27,6 +27,7 @@ public final class ClothKrypt04McgConfig implements ConfigData {
 
     public long rotateAfterBytes = 1024L * 1024L;
 
+    public String packetPrefix = "[KRYPT04MCG]";
     public boolean receiveRegexMode = false;
     public String receiveRegex = "^\\[KRYPT04MCG\\] .+";
     public boolean shadowListenMode = false;
@@ -53,6 +54,7 @@ public final class ClothKrypt04McgConfig implements ConfigData {
         config.sessionTtlMinutes = sessionTtlMinutes;
         config.maxMessagesPerSession = maxMessagesPerSession;
         config.rotateAfterBytes = rotateAfterBytes;
+        config.packetPrefix = packetPrefix;
         config.receiveRegexMode = receiveRegexMode;
         config.receiveRegex = receiveRegex;
         config.shadowListenMode = shadowListenMode;

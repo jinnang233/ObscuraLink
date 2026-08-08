@@ -148,7 +148,7 @@ public final class ChatSendService {
 
     private void sendPacket(EncryptedPacket packet, String receiver) throws Exception {
         byte[] encoded = packetCodec.encode(packet);
-        List<String> fragments = fragmentService.fragment(encoded, packet.messageId(), config.fragmentSize);
+        List<String> fragments = fragmentService.fragment(encoded, packet.messageId(), config.fragmentSize, config.packetPrefix);
         sentMessageCacheService.remember(Hex.encode(packet.messageId()), receiver, fragments);
         sendFragments(receiver, fragments);
     }
