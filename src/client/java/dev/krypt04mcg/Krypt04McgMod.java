@@ -14,8 +14,10 @@ import dev.krypt04mcg.fragment.FragmentService;
 import dev.krypt04mcg.gui.Krypt04McgChatScreen;
 import dev.krypt04mcg.input.Krypt04McgKeyBindings;
 import dev.krypt04mcg.model.ChatSendFragment;
+import dev.krypt04mcg.protocol.ClientboundChatFragmentPayload;
 import dev.krypt04mcg.protocol.ChatFragmentPayload;
 import dev.krypt04mcg.protocol.PacketCodec;
+import dev.krypt04mcg.protocol.ServerboundChatFragmentPayload;
 import dev.krypt04mcg.service.DecryptionHistoryService;
 import dev.krypt04mcg.service.GroupService;
 import dev.krypt04mcg.service.KeyStoreService;
@@ -192,18 +194,26 @@ public final class Krypt04McgMod implements ClientModInitializer {
             LOGGER.warn("Refusing to send non-Krypt04Mcg payload fragment");
             return;
         }
-        if (ClientPlayNetworking.canSend(ChatFragmentPayload.TYPE)) {
-            ClientPlayNetworking.send(new ChatFragmentPayload(chatSendFragment.receiver(), fragment, chatSendFragment.version()));
+        if (ClientPlayNetworking.canSend(ServerboundChatFragmentPayload.TYPE)) {
+            ClientPlayNetworking.send(new ServerboundChatFragmentPayload(
+                    chatSendFragment.receiver(), fragment, chatSendFragment.version()));
         } else if (config.verboseMessages) {
             system("Krypt04Mcg payload channel is not available on this server: " + ChatFragmentPayload.CHANNEL);
         }
     }
 
     private void registerCustomPayloadNetworking() {
-        PayloadTypeRegistry.serverboundPlay().register(ChatFragmentPayload.TYPE, ChatFragmentPayload.CODEC);
-        PayloadTypeRegistry.clientboundPlay().register(ChatFragmentPayload.TYPE, ChatFragmentPayload.CODEC);
-        ClientPlayNetworking.registerGlobalReceiver(ChatFragmentPayload.TYPE, (payload, context) ->
-                chatReceiveHandler.handle(null, payload.fragment()));
+        PayloadTypeRegistry.serverboundPlay().register(
+                ServerboundChatFragmentPayload.TYPE, ServerboundChatFragmentPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(
+                ClientboundChatFragmentPayload.TYPE, ClientboundChatFragmentPayload.CODEC);
+        ClientPlayNetworking.registerGlobalReceiver(ClientboundChatFragmentPayload.TYPE, (payload, context) -> {
+            if (payload.sender().isBlank()) {
+                LOGGER.warn("Ignoring Krypt04Mcg payload fragment without a server-authenticated sender");
+                return;
+            }
+            chatReceiveHandler.handle(payload.sender(), payload.fragment());
+        });
     }
 
     static String formatServerCommand(String template, ChatSendFragment fragment) {

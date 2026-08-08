@@ -241,12 +241,20 @@ If a server plugin wants to relay fragments without normal chat, it can declare 
 ```text
 channel id: krypt04mcg:chat_fragment
 direction C2S: client -> server
-direction S2C: server -> client
-payload fields:
+payload fields C2S:
   string receiver
   string fragment
   varint version
+direction S2C: server -> client
+payload fields S2C:
+  string sender
+  string fragment
+  varint version
 ```
+
+The first field is direction-specific. For C2S it is the intended receiver. For S2C it is the authenticated
+Minecraft sender. The server must derive the S2C `sender` from the player connection that supplied the C2S
+payload; it must not accept a sender name supplied by a client or copy the C2S `receiver` into that field.
 
 Client send mode `CUSTOM_PAYLOAD` only sends on this channel when Fabric reports the connected server can receive `krypt04mcg:chat_fragment`; otherwise the client simply skips payload sending and does not require server-side support.
 
