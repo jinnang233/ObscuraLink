@@ -12,6 +12,8 @@ import java.util.Map;
 import java.util.Optional;
 
 public final class FragmentReassembler {
+    public static final int DEFAULT_MAX_FRAGMENTS_PER_MESSAGE = 512;
+
     private final Clock clock;
     private final Duration timeout;
     private final int maxMessages;
@@ -19,7 +21,7 @@ public final class FragmentReassembler {
     private final Map<String, PartialMessage> partials = new HashMap<>();
 
     public FragmentReassembler() {
-        this(Clock.systemUTC(), Duration.ofMinutes(2), 128, 256);
+        this(Clock.systemUTC(), Duration.ofMinutes(2), 128, DEFAULT_MAX_FRAGMENTS_PER_MESSAGE);
     }
 
     public FragmentReassembler(Clock clock, Duration timeout, int maxMessages, int maxFragmentsPerMessage) {

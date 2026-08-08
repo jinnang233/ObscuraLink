@@ -118,7 +118,9 @@ Private and public key material are stored separately. Public-key records includ
 
 The KEM and signature selections only apply when no local key exists or when a key is explicitly regenerated. Changing the configuration never rewrites an existing key. Encryption, signing, verification, and decryption resolve algorithms from key records and packet algorithm identifiers rather than assuming the current configuration.
 
-Supported key selections are all ten Bouncy Castle CMCE parameter sets, ML-KEM-512/768/1024, Falcon-512/1024, and ML-DSA-44/65/87. The defaults remain `CMCE/mceliece348864`, `Falcon-512`, and `AES-256-GCM`.
+Supported key selections are all ten Bouncy Castle CMCE parameter sets, ML-KEM-512/768/1024, Falcon-512/1024,
+ML-DSA-44/65/87, and all 24 SLH-DSA variants (the 12 SHA2/SHAKE parameter sets in both pure and pre-hash forms).
+The defaults remain `CMCE/mceliece348864`, `Falcon-512`, and `AES-256-GCM`.
 
 ## Commands
 
