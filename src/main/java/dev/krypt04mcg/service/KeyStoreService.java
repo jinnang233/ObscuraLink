@@ -21,9 +21,11 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public final class KeyStoreService {
@@ -179,6 +181,9 @@ public final class KeyStoreService {
         if (trimmed.startsWith("{")) {
             return trimmed;
         }
+        if (looksLikePath(trimmed)) {
+            throw new IOException("Import file was not found or is not readable: " + trimmed);
+        }
         try {
             return new String(Base64Url.decode(trimmed), StandardCharsets.UTF_8);
         } catch (IllegalArgumentException e) {
@@ -190,7 +195,8 @@ public final class KeyStoreService {
         if (value.length() >= 2) {
             char first = value.charAt(0);
             char last = value.charAt(value.length() - 1);
-            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')
+                    || (first == '\u201c' && last == '\u201d') || (first == '\u2018' && last == '\u2019')) {
                 return value.substring(1, value.length() - 1);
             }
         }
@@ -198,13 +204,25 @@ public final class KeyStoreService {
     }
 
     private Optional<Path> findImportFile(String dataOrFile) {
-        List<Path> candidates;
+        Set<Path> candidates = new LinkedHashSet<>();
         try {
             Path input = Path.of(dataOrFile);
-            candidates = List.of(
-                    input.isAbsolute() ? input.normalize() : safeResolve(root, dataOrFile),
-                    safeResolve(keysDir.resolve("public"), dataOrFile)
-            );
+            if (input.isAbsolute()) {
+                candidates.add(input.normalize());
+            } else {
+                addImportCandidate(candidates, root, dataOrFile);
+                addImportCandidate(candidates, keysDir.resolve("public"), dataOrFile);
+
+                Path baseRoot = accountBaseRoot(root);
+                if (!baseRoot.equals(root.toAbsolutePath().normalize())) {
+                    addImportCandidate(candidates, baseRoot, dataOrFile);
+                    addImportCandidate(candidates, baseRoot.resolve("keys").resolve("public"), dataOrFile);
+                    Path gameRoot = gameRoot(baseRoot);
+                    if (gameRoot != null) {
+                        addImportCandidate(candidates, gameRoot, dataOrFile);
+                    }
+                }
+            }
         } catch (InvalidPathException e) {
             return Optional.empty();
         }
@@ -214,6 +232,41 @@ public final class KeyStoreService {
             }
         }
         return Optional.empty();
+    }
+
+    private static void addImportCandidate(Set<Path> candidates, Path base, String child) {
+        try {
+            candidates.add(safeResolve(base, child));
+        } catch (InvalidPathException ignored) {
+            // Try the other explicitly allowed import roots.
+        }
+    }
+
+    private static Path accountBaseRoot(Path accountRoot) {
+        Path normalized = accountRoot.toAbsolutePath().normalize();
+        Path accounts = normalized.getParent();
+        if (accounts != null && accounts.getFileName() != null
+                && "accounts".equalsIgnoreCase(accounts.getFileName().toString())
+                && accounts.getParent() != null) {
+            return accounts.getParent();
+        }
+        return normalized;
+    }
+
+    private static Path gameRoot(Path baseRoot) {
+        Path config = baseRoot.getParent();
+        if (config == null || config.getFileName() == null
+                || !"config".equalsIgnoreCase(config.getFileName().toString())) {
+            return null;
+        }
+        return config.getParent();
+    }
+
+    private static boolean looksLikePath(String value) {
+        return value.indexOf('/') >= 0 || value.indexOf('\\') >= 0
+                || value.toLowerCase(Locale.ROOT).endsWith(".json")
+                || value.startsWith(".")
+                || (value.length() >= 2 && Character.isLetter(value.charAt(0)) && value.charAt(1) == ':');
     }
 
     private static Path safeResolve(Path base, String child) {

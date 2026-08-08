@@ -142,6 +142,69 @@ final class KeyStoreServiceTest {
     }
 
     @Test
+    void importsFromLegacyConfigRootAfterAccountIsolation() throws Exception {
+        CryptoService cryptoService = new CryptoService();
+        Path baseRoot = tempDir.resolve("config").resolve("krypt04mcg");
+        Path accountRoot = baseRoot.resolve("accounts").resolve("alice-uuid");
+        KeyStoreService keyStoreService = new KeyStoreService(accountRoot, cryptoService);
+        keyStoreService.init("alice", "alice-uuid");
+        PublicIdentity peer = publicIdentity(cryptoService.generateLocalKeys("casey", "casey-uuid"));
+        Path importFile = baseRoot.resolve("incoming").resolve("casey.json");
+        Files.createDirectories(importFile.getParent());
+        Files.writeString(importFile, JsonSupport.prettyGson().toJson(peer));
+
+        keyStoreService.importPublicIdentity("casey", "incoming/casey.json");
+
+        PublicIdentity found = keyStoreService.findPublicIdentity("casey").orElseThrow();
+        assertEquals(peer.signaturePublicKey().fingerprint(), found.signaturePublicKey().fingerprint());
+    }
+
+    @Test
+    void importsFromGameRelativePathAfterAccountIsolation() throws Exception {
+        CryptoService cryptoService = new CryptoService();
+        Path baseRoot = tempDir.resolve("config").resolve("krypt04mcg");
+        Path accountRoot = baseRoot.resolve("accounts").resolve("alice-uuid");
+        KeyStoreService keyStoreService = new KeyStoreService(accountRoot, cryptoService);
+        keyStoreService.init("alice", "alice-uuid");
+        PublicIdentity peer = publicIdentity(cryptoService.generateLocalKeys("casey", "casey-uuid"));
+        Path importFile = baseRoot.resolve("incoming").resolve("casey.json");
+        Files.createDirectories(importFile.getParent());
+        Files.writeString(importFile, JsonSupport.prettyGson().toJson(peer));
+
+        keyStoreService.importPublicIdentity("casey", "config/krypt04mcg/incoming/casey.json");
+
+        PublicIdentity found = keyStoreService.findPublicIdentity("casey").orElseThrow();
+        assertEquals(peer.signaturePublicKey().fingerprint(), found.signaturePublicKey().fingerprint());
+    }
+
+    @Test
+    void importsFromQuotedAbsoluteWindowsPath() throws Exception {
+        CryptoService cryptoService = new CryptoService();
+        KeyStoreService keyStoreService = new KeyStoreService(tempDir.resolve("account"), cryptoService);
+        keyStoreService.init("alice", "alice-uuid");
+        PublicIdentity peer = publicIdentity(cryptoService.generateLocalKeys("casey", "casey-uuid"));
+        Path importFile = tempDir.resolve("casey public.json").toAbsolutePath();
+        Files.writeString(importFile, JsonSupport.prettyGson().toJson(peer));
+
+        keyStoreService.importPublicIdentity("casey", "\"" + importFile + "\"");
+
+        PublicIdentity found = keyStoreService.findPublicIdentity("casey").orElseThrow();
+        assertEquals(peer.signaturePublicKey().fingerprint(), found.signaturePublicKey().fingerprint());
+    }
+
+    @Test
+    void reportsMissingImportFileAsAFileError() throws Exception {
+        CryptoService cryptoService = new CryptoService();
+        KeyStoreService keyStoreService = new KeyStoreService(tempDir, cryptoService);
+        keyStoreService.init("alice", "alice-uuid");
+
+        Exception error = assertThrows(Exception.class,
+                () -> keyStoreService.importPublicIdentity("casey", "missing/casey.json"));
+
+        assertTrue(error.getMessage().contains("Import file was not found or is not readable"));
+    }
+
+    @Test
     void rejectsConfigRelativeImportPathTraversal() throws Exception {
         CryptoService cryptoService = new CryptoService();
         KeyStoreService keyStoreService = new KeyStoreService(tempDir, cryptoService);
