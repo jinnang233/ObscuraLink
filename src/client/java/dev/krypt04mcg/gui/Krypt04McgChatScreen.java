@@ -2,6 +2,7 @@ package dev.krypt04mcg.gui;
 
 import dev.krypt04mcg.chat.ChatConversationStore;
 import dev.krypt04mcg.chat.ChatSendService;
+import dev.krypt04mcg.client.ClientMessages;
 import dev.krypt04mcg.model.GroupRecord;
 import dev.krypt04mcg.model.PublicIdentity;
 import dev.krypt04mcg.service.GroupService;
@@ -367,7 +368,8 @@ public final class Krypt04McgChatScreen extends Screen {
                     .map(name -> findGroupTarget(name).orElse(new Target(name, true, List.of())))
                     .forEach(this::rememberTarget);
         } catch (Exception e) {
-            Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(Component.literal("[Krypt04Mcg][ERROR] " + e.getMessage()));
+            Minecraft.getInstance().gui.hud.getChat().addClientSystemMessage(
+                    Component.literal(ClientMessages.messagePrefix() + "[ERROR] " + e.getMessage()));
         }
     }
 

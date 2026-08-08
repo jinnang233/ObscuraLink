@@ -16,6 +16,7 @@ import dev.krypt04mcg.service.GroupService;
 import dev.krypt04mcg.service.KeyStoreService;
 import dev.krypt04mcg.service.KeyTrustService;
 import dev.krypt04mcg.service.SessionService;
+import dev.krypt04mcg.client.ClientMessages;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -454,7 +455,7 @@ public final class CommandRegistrar {
     }
 
     private static void feedback(FabricClientCommandSource source, String message) {
-        source.sendFeedback(Component.literal("[Krypt04Mcg] " + message));
+        source.sendFeedback(Component.literal(ClientMessages.messagePrefixWithSpace() + message));
     }
 
     private static void error(FabricClientCommandSource source, Exception e) {
@@ -466,6 +467,6 @@ public final class CommandRegistrar {
     }
 
     private static String tr(String key, Object... args) {
-        return dev.krypt04mcg.client.ClientMessages.tr(key, args);
+        return ClientMessages.tr(key, args);
     }
 }

@@ -7,6 +7,7 @@ public class Krypt04McgConfig {
     public boolean enableCompression = true;
     public boolean showReceiveProgress = true;
     public boolean enableConversationHistory = true;
+    public boolean showDisclaimerWarning = true;
 
     public int fragmentSize = 180;
 
@@ -20,6 +21,7 @@ public class Krypt04McgConfig {
 
     public ChatSendMode chatSendMode = ChatSendMode.CHAT;
     public String serverCommandTemplate = "/msg <receiver> <fragment>";
+    public String messagePrefix = "[Krypt04Mcg]";
     public String packetPrefix = "[KRYPT04MCG]";
     public boolean receiveRegexMode = false;
     public String receiveRegex = "^\\[KRYPT04MCG\\] .+";

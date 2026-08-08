@@ -67,6 +67,7 @@ public final class Krypt04McgMod implements ClientModInitializer {
     public void onInitializeClient() {
         instance = this;
         config = OptionalClothConfig.loadOrDefault();
+        ClientMessages.setMessagePrefix(config.messagePrefix);
 
         PacketCodec packetCodec = new PacketCodec();
         CryptoService cryptoService = new CryptoService();
@@ -95,7 +96,10 @@ public final class Krypt04McgMod implements ClientModInitializer {
         chatSendService = new ChatSendService(config, keyStoreService, keyTrustService, sessionService, sentMessageCacheService, cryptoService, packetCodec,
                 fragmentService, this::sendChatLine, this::system);
         applyChatSender();
-        OptionalClothConfig.registerSaveListener(updated -> applyChatSender());
+        OptionalClothConfig.registerSaveListener(updated -> {
+            ClientMessages.setMessagePrefix(updated.messagePrefix);
+            applyChatSender();
+        });
         chatReceiveHandler = new ChatReceiveHandler(config, keyStoreService, cryptoService, packetCodec, fragmentService,
                 reassembler, decryptionHistoryService, sessionService, this::system, conversationStore::incoming);
         registerCustomPayloadNetworking();
@@ -204,11 +208,14 @@ public final class Krypt04McgMod implements ClientModInitializer {
     }
 
     private void showDisclaimer(Minecraft client) {
+        if (!config.showDisclaimerWarning) {
+            return;
+        }
         LOGGER.debug(ClientMessages.tr(DISCLAIMER_KEY));
         client.execute(() -> {
             if (client.gui != null) {
                 client.gui.hud.getChat().addClientSystemMessage(Component.empty()
-                        .append(Component.literal("[Krypt04Mcg] ").withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
+                        .append(Component.literal(ClientMessages.messagePrefixWithSpace()).withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
                         .append(Component.translatable(DISCLAIMER_KEY).withStyle(ChatFormatting.GOLD)));
             }
         });

@@ -7,6 +7,7 @@
   "text.autoconfig.krypt04mcg.option.showReceiveProgress": "Mostrar progreso de recepción",
 
   "text.autoconfig.krypt04mcg.option.enableConversationHistory": "Activar historial de conversaciones",
+  "text.autoconfig.krypt04mcg.option.showDisclaimerWarning": "Mostrar advertencia de exención de responsabilidad",
 
   "text.autoconfig.krypt04mcg.option.fragmentSize": "Tamaño de fragmento",
   "text.autoconfig.krypt04mcg.option.sendDelayMs": "Retraso de envío (ms)",
@@ -18,6 +19,7 @@
   "text.autoconfig.krypt04mcg.option.chatSendMode.SERVER_COMMAND": "Comando del servidor",
   "text.autoconfig.krypt04mcg.option.chatSendMode.CUSTOM_PAYLOAD": "Canal de payload personalizado",
   "text.autoconfig.krypt04mcg.option.serverCommandTemplate": "Plantilla de comando del servidor",
+  "text.autoconfig.krypt04mcg.option.messagePrefix": "Prefijo del mensaje",
   "text.autoconfig.krypt04mcg.option.packetPrefix": "Prefijo de paquete",
   "text.autoconfig.krypt04mcg.option.receiveRegexMode": "Regex Receive Mode",
   "text.autoconfig.krypt04mcg.option.receiveRegex": "Receive Regex",

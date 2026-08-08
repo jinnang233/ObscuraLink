@@ -31,6 +31,7 @@ final class Krypt04McgConfigFuzzTest {
             assertEquals(config.verboseMessages, decoded.verboseMessages);
             assertEquals(config.enableCompression, decoded.enableCompression);
             assertEquals(config.showReceiveProgress, decoded.showReceiveProgress);
+            assertEquals(config.showDisclaimerWarning, decoded.showDisclaimerWarning);
             assertEquals(config.fragmentSize, decoded.fragmentSize);
             assertEquals(config.sendDelayMs, decoded.sendDelayMs);
             assertEquals(config.sessionTtlMinutes, decoded.sessionTtlMinutes);
@@ -39,6 +40,7 @@ final class Krypt04McgConfigFuzzTest {
             assertEquals(config.packetPrefix, decoded.packetPrefix);
             assertEquals(config.chatSendMode, decoded.chatSendMode);
             assertEquals(config.serverCommandTemplate, decoded.serverCommandTemplate);
+            assertEquals(config.messagePrefix, decoded.messagePrefix);
             assertEquals(config.receiveRegexMode, decoded.receiveRegexMode);
             assertEquals(config.receiveRegex, decoded.receiveRegex);
             assertEquals(config.shadowListenMode, decoded.shadowListenMode);
@@ -85,6 +87,7 @@ final class Krypt04McgConfigFuzzTest {
         config.verboseMessages = random.nextBoolean();
         config.enableCompression = random.nextBoolean();
         config.showReceiveProgress = random.nextBoolean();
+        config.showDisclaimerWarning = random.nextBoolean();
         config.fragmentSize = 1 + random.nextInt(512);
         config.sendDelayMs = random.nextInt(10_000);
         config.sessionTtlMinutes = 1 + random.nextInt(3_000);
@@ -93,6 +96,7 @@ final class Krypt04McgConfigFuzzTest {
         config.packetPrefix = random.nextBoolean() ? "" : randomToken(random);
         config.chatSendMode = ChatSendMode.values()[random.nextInt(ChatSendMode.values().length)];
         config.serverCommandTemplate = random.nextBoolean() ? "/msg <receiver> <fragment>" : randomToken(random);
+        config.messagePrefix = random.nextBoolean() ? "" : randomToken(random);
         config.receiveRegexMode = random.nextBoolean();
         config.receiveRegex = randomRegex(random);
         config.shadowListenMode = random.nextBoolean();

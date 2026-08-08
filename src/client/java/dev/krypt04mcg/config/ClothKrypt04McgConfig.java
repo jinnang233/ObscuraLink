@@ -12,6 +12,7 @@ public final class ClothKrypt04McgConfig implements ConfigData {
     public boolean enableCompression = true;
     public boolean showReceiveProgress = true;
     public boolean enableConversationHistory = true;
+    public boolean showDisclaimerWarning = true;
 
     @ConfigEntry.BoundedDiscrete(min = 64, max = 200)
     public int fragmentSize = 180;
@@ -29,6 +30,7 @@ public final class ClothKrypt04McgConfig implements ConfigData {
 
     public ChatSendMode chatSendMode = ChatSendMode.CHAT;
     public String serverCommandTemplate = "/msg <receiver> <fragment>";
+    public String messagePrefix = "[Krypt04Mcg]";
     public String packetPrefix = "[KRYPT04MCG]";
     public boolean receiveRegexMode = false;
     public String receiveRegex = "^\\[KRYPT04MCG\\] .+";
@@ -54,6 +56,7 @@ public final class ClothKrypt04McgConfig implements ConfigData {
         config.enableCompression = enableCompression;
         config.showReceiveProgress = showReceiveProgress;
         config.enableConversationHistory = enableConversationHistory;
+        config.showDisclaimerWarning = showDisclaimerWarning;
         config.fragmentSize = fragmentSize;
         config.sendDelayMs = sendDelayMs;
         config.sessionTtlMinutes = sessionTtlMinutes;
@@ -61,6 +64,7 @@ public final class ClothKrypt04McgConfig implements ConfigData {
         config.rotateAfterBytes = rotateAfterBytes;
         config.chatSendMode = chatSendMode;
         config.serverCommandTemplate = serverCommandTemplate;
+        config.messagePrefix = messagePrefix;
         config.packetPrefix = packetPrefix;
         config.receiveRegexMode = receiveRegexMode;
         config.receiveRegex = receiveRegex;
