@@ -2,6 +2,9 @@ package dev.krypt04mcg.command;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.context.ParsedCommandNode;
+import com.mojang.brigadier.context.StringRange;
 import dev.krypt04mcg.chat.ChatSendService;
 import dev.krypt04mcg.config.Krypt04McgConfig;
 import dev.krypt04mcg.model.GroupRecord;
@@ -16,6 +19,7 @@ import dev.krypt04mcg.service.SessionService;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.network.chat.Component;
 
 import java.time.ZoneId;
@@ -67,11 +71,11 @@ public final class CommandRegistrar {
 
     private static LiteralArgumentBuilder<FabricClientCommandSource> tellCommand(ChatSendService chatSendService, boolean signed) {
         return ClientCommands.literal(signed ? "stell" : "tell")
-                .then(ClientCommands.argument("receiver", StringArgumentType.word())
+                .then(ClientCommands.argument("receiver", EntityArgument.player())
                         .then(ClientCommands.argument("message", StringArgumentType.greedyString())
                                 .executes(ctx -> {
                                     chatSendService.sendKemMessage(
-                                            StringArgumentType.getString(ctx, "receiver"),
+                                            playerName(ctx, "receiver"),
                                             StringArgumentType.getString(ctx, "message"),
                                             signed);
                                     return 1;
@@ -80,20 +84,20 @@ public final class CommandRegistrar {
 
     private static LiteralArgumentBuilder<FabricClientCommandSource> exchangeCommand(ChatSendService chatSendService) {
         return ClientCommands.literal("exchange")
-                .then(ClientCommands.argument("receiver", StringArgumentType.word())
+                .then(ClientCommands.argument("receiver", EntityArgument.player())
                         .executes(ctx -> {
-                            chatSendService.exchange(StringArgumentType.getString(ctx, "receiver"));
+                            chatSendService.exchange(playerName(ctx, "receiver"));
                             return 1;
                         }));
     }
 
     private static LiteralArgumentBuilder<FabricClientCommandSource> etellCommand(ChatSendService chatSendService) {
         return ClientCommands.literal("etell")
-                .then(ClientCommands.argument("receiver", StringArgumentType.word())
+                .then(ClientCommands.argument("receiver", EntityArgument.player())
                         .then(ClientCommands.argument("message", StringArgumentType.greedyString())
                                 .executes(ctx -> {
                                     chatSendService.sendSessionMessage(
-                                            StringArgumentType.getString(ctx, "receiver"),
+                                            playerName(ctx, "receiver"),
                                             StringArgumentType.getString(ctx, "message"));
                                     return 1;
                                 })));
@@ -222,9 +226,9 @@ public final class CommandRegistrar {
                                     }
                                 })))
                 .then(ClientCommands.literal("refresh")
-                        .then(ClientCommands.argument("player", StringArgumentType.word())
+                        .then(ClientCommands.argument("player", EntityArgument.player())
                                 .executes(ctx -> {
-                                    chatSendService.exchange(StringArgumentType.getString(ctx, "player"));
+                                    chatSendService.exchange(playerName(ctx, "player"));
                                     return 1;
                                 })));
     }
@@ -244,9 +248,9 @@ public final class CommandRegistrar {
                                                                                   DecryptionHistoryService decryptionHistoryService,
                                                                                   Krypt04McgConfig config) {
         return ClientCommands.literal("status")
-                .then(ClientCommands.argument("player", StringArgumentType.word())
+                .then(ClientCommands.argument("player", EntityArgument.player())
                         .executes(ctx -> {
-                            showStatus(ctx.getSource(), StringArgumentType.getString(ctx, "player"),
+                            showStatus(ctx.getSource(), playerName(ctx, "player"),
                                     keyStoreService, keyTrustService, sessionService, decryptionHistoryService, config);
                             return 1;
                         }));
@@ -429,6 +433,24 @@ public final class CommandRegistrar {
                 .splitAsStream(raw.trim())
                 .filter(value -> !value.isBlank())
                 .toList();
+    }
+
+    private static String playerName(CommandContext<FabricClientCommandSource> ctx, String name) {
+        String raw = rawArgument(ctx, name);
+        if ("@s".equals(raw)) {
+            return ctx.getSource().getPlayer().getGameProfile().name();
+        }
+        return raw;
+    }
+
+    private static String rawArgument(CommandContext<FabricClientCommandSource> ctx, String name) {
+        for (ParsedCommandNode<FabricClientCommandSource> node : ctx.getNodes()) {
+            if (name.equals(node.getNode().getName())) {
+                StringRange range = node.getRange();
+                return ctx.getInput().substring(range.getStart(), range.getEnd());
+            }
+        }
+        throw new IllegalStateException(tr("text.krypt04mcg.error.generic", "Missing argument: " + name));
     }
 
     private static void feedback(FabricClientCommandSource source, String message) {
